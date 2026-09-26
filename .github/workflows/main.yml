@@ -1,0 +1,51 @@
+# Builds pokemonpris.no twice a day and publishes it with GitHub Pages.
+name: Update Pokémonpris
+
+on:
+  schedule:
+    - cron: "0 5 * * *"    # about 07:00 Norwegian time
+    - cron: "0 15 * * *"   # about 17:00 Norwegian time
+  workflow_dispatch:        # lets you run it by hand from the Actions tab
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - name: Restore saved card prices
+        uses: actions/cache@v4
+        with:
+          path: pokepris_cards_cache.json
+          key: cards-${{ github.run_id }}
+          restore-keys: cards-
+
+      - name: Build the website
+        run: python pokepris.py --site --no-open --out site/index.html --top 3
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
