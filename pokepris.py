@@ -429,9 +429,57 @@ def group_offers(rows, kind):
 
 # ---------- best cards to pull (TCGdex, Cardmarket prices) ----------
 CARD_CACHE = Path(__file__).with_name("pokepris_cards_cache.json")
-TCGDEX = "https://api.tcgdex.net/v2/en"
+TCGDEX = "https://api.tcgdex.net/v2/"
 CACHE_HOURS = 24
-BIG_CARD = re.compile(r"\b(?:ex|EX|GX|V|VMAX|VSTAR|Mega|M)\b")
+BIG_CARD = re.compile(r"\b(?:ex|EX|GX|V|VMAX|VSTAR|Mega|M)\b|(?:ex|EX|GX|VMAX|VSTAR)$")
+
+# Japanese sets: TCGdex id -> the English names shops use for them.
+JA_SETS = {
+    "M6a": ["30th celebration"], "M6": ["storm emeralda", "storm emerald"], "M5": ["abyss eye"],
+    "M4": ["ninja spinner"], "M3": ["nihil zero", "munikis zero", "munikiss zero"],
+    "M2a": ["mega dream ex", "mega dream"], "M2": ["inferno x"], "M1S": ["mega symphonia"], "M1L": ["mega brave"],
+    "SV11W": ["white flare"], "SV11B": ["black bolt"],
+    "SV10": ["glory of team rocket", "team rocket glory", "team rocket s glory", "rocket gang glory"],
+    "SV9a": ["heat wave arena", "hot wind arena"], "SV9": ["battle partner"],
+    "SV8a": ["terastal festival ex", "terastal festival", "terastal fest ex", "terastal fest"],
+    "SV8": ["super electric breaker", "supercharged breaker"], "SV7a": ["paradise dragona"],
+    "SV7": ["stellar miracle"], "SV6a": ["night wanderer"], "SV6": ["mask of change", "transformation mask"],
+    "SV5a": ["crimson haze"], "SV5M": ["cyber judge", "cyber jugde"], "SV5K": ["wild force"],
+    "SV4a": ["shiny treasure ex", "shiny treasure"], "SV4M": ["future flash"], "SV4K": ["ancient roar"],
+    "SV3a": ["raging surf"], "SV3": ["ruler of the black flame", "black flame ruler", "ruler of black flame"],
+    "SV2a": ["pokemon card 151", "151"], "SV2D": ["clay burst"], "SV2P": ["snow hazard"],
+    "SV1a": ["triplet beat"], "SV1S": ["scarlet ex"], "SV1V": ["violet ex"],
+    "S12a": ["vstar universe"], "S12": ["paradigm trigger"], "S11a": ["incandescent arcana"], "S11": ["lost abyss"],
+    "S10b": ["pokemon go"], "S10a": ["dark phantasma"], "S10P": ["space juggler"], "S10D": ["time gazer"],
+    "S9a": ["battle region"], "S9": ["star birth"], "S8b": ["vmax climax"],
+    "S8a": ["25th anniversary collection"], "S8": ["fusion art"], "S7R": ["blue sky stream"],
+    "S7D": ["skyscraping perfection", "skyscraping perfect"], "S6a": ["eevee heroe"],
+    "S6K": ["jet black spirit", "jet black geist"], "S6H": ["silver lance"],
+    "S5a": ["peerless fighter", "matchless fighter"], "S5R": ["rapid strike master"],
+    "S5I": ["single strike master"], "S4a": ["shiny star v"], "S4": ["amazing volt tackle"],
+    "S3a": ["legendary heartbeat"], "S2a": ["explosive walker"], "SM12a": ["tag all star"],
+    "SM11b": ["dream league"], "SM8b": ["gx ultra shiny"], "SM7b": ["fairy rise"],
+    "SM12": ["alter genesis"], "SM11": ["miracle twin"], "SM11a": ["remix bout"], "SM10": ["double blaze"],
+    "SM10a": ["gg end"], "SM10b": ["sky legend"], "SM9": ["tag bolt"], "SM9a": ["night unison"],
+    "SM9b": ["full metal wall"], "SM8": ["explosive impact"], "SM8a": ["dark order"],
+    "SM7": ["sky splitting charisma", "charisma of the wrecked sky"], "SM7a": ["thunderclap spark"],
+    "SM6a": ["dragon storm"], "SM6b": ["champion road"], "SM6": ["forbidden light"],
+    "SM5M": ["ultra moon"], "SM5S": ["ultra sun"], "SM5+": ["ultra force"], "SMP2": ["detective pikachu"],
+    "S1a": ["vmax rising"], "S1H": ["shield expansion"], "S1W": ["sword expansion"],
+    "S2": ["rebellion crash", "rebel clash"], "S3": ["infinity zone", "mugen zone"],
+}
+# Other translations shops use for the same Japanese sets.
+for _sid, _names in {
+    "M3": ["nullifying zero"], "SV7": ["stella miracle"], "SV6a": ["night wander"],
+    "SV10": ["glory of the rocket squad", "rocket squad"], "SV9a": ["hot air arena", "heat wave"],
+    "S6K": ["jet black"], "S7D": ["towering perfect", "towering perfection"], "S10a": ["dark fantasma"],
+    "S4": ["astonishing volt tackle", "astonishing voltecker"], "S2a": ["explosion walker"],
+    "S4a": ["shiny star"], "S8a": ["25th anniversary"],
+}.items():
+    JA_SETS[_sid] += _names
+# English aliases for sets the shops name differently from TCGdex.
+EN_ALIASES = {"25th anniversary celebration": "cel25", "30th anniversary celebration": "30th"}
+BASE_SETS = {"sword shield": "swsh1", "scarlet violet": "sv01", "sun moon": "sm1", "xy": "xy1"}
 
 
 def tcgdex(op, path):
@@ -461,13 +509,29 @@ def norm_name(s):
     return " " + " ".join(w[:-1] if len(w) > 3 and w.endswith("s") else w for w in words) + " "
 
 
-def match_set(title, sets):
-    """Find which card set a product belongs to, e.g. 'Pokémon Chaos Rising ETB' -> me04."""
+JA_CODES = {k.lower(): k for k in JA_SETS}
+
+
+def match_set(title, sets, lang="en"):
+    """Find which card set a product belongs to, e.g. 'Pokémon Chaos Rising ETB' -> me04,
+    'Ninja Spinner Booster Box' (Japanese) -> ja:M4."""
+    if lang == "jp":  # a set code in the title is the surest sign: (SV11B), M2a ...
+        for code in re.findall(r"(?i)\b((?:sv|sm|s|m)\d+[a-z]?)\b", title):
+            if code.lower() in JA_CODES:
+                return "ja:" + JA_CODES[code.lower()]
     t = re.sub(r"\([^)]*\)|\[[^\]]*\]", " ", title)  # (10 Kort), [JP] ...
     t = re.sub(r"(?i)\bmaks?\.?\s*\d+\s*(?:per|pr)?\.?\s*(?:pers|person|kunde)?\.?", " ", t)
-    t = re.sub(r"(?i)\b\d+\s*(?:x\s*)?(?:pack|packs|pakker|kort|cards|stk)\b", " ", t)
+    t = re.sub(r"(?i)\b\d+\s*[-x]?\s*(?:pack|packs|pakker|kort|cards|stk)\b", " ", t)  # 36 pakker, 3-Pack
     full = norm_name(t)
     numbers = set(re.findall(r" (\d+(?:st|nd|rd|th)?) ", full.replace(" ", "  ")))  # 151, 30th ...
+    if lang == "en":
+        for alias, set_id in EN_ALIASES.items():
+            if norm_name(alias) in full:
+                return set_id
+        if " base " in full:  # "Sword & Shield Base Set" is that era's first set, not the 1999 Base Set
+            for series, set_id in BASE_SETS.items():
+                if norm_name(series) in full:
+                    return set_id
     short = full
     for s in SERIES:
         if " " in s.strip():
@@ -486,8 +550,36 @@ def card_price_eur(card):
     return trend or max(cm.get("avg30") or 0, cm.get("avg30-holo") or 0)
 
 
-def top_cards(op, set_id):
-    s = tcgdex(op, f"/sets/{set_id}")
+def species_names(op, cache):
+    """Pokédex number -> English Pokémon name (from PokéAPI), kept in the cache for 30 days."""
+    entry = cache.get("species")
+    if entry and time.time() - entry.get("ts", 0) < 30 * 86400:
+        return {int(k): v for k, v in entry["names"].items()}
+    try:
+        lst = json.loads(fetch(op, "https://pokeapi.co/api/v2/pokemon-species?limit=2000"))["results"]
+        names = {int(x["url"].rstrip("/").split("/")[-1]): x["name"].replace("-", " ").title() for x in lst}
+        cache["species"] = dict(ts=time.time(), names=names)
+        return names
+    except Exception:
+        return {}
+
+
+def english_card_name(card, species):
+    """'メガゲッコウガex' (dexId 658) -> 'Mega Greninja ex'. Trainer cards keep their Japanese name."""
+    name, dex = card.get("name") or "", card.get("dexId") or []
+    if not dex or not all(d in species for d in dex):
+        return name
+    en = " & ".join(species[d] for d in dex)
+    if name.startswith("メガ") or name.startswith("M"):
+        en = "Mega " + en
+    suffix = re.search(r"(ex|EX|GX|VMAX|VSTAR|BREAK|V)$", name)
+    return f"{en} {suffix.group(1)}" if suffix else en
+
+
+def top_cards(op, key, species=None):
+    """5 most valuable cards of a set. key is an English set id ('me04') or 'ja:<id>' for Japanese sets."""
+    lang, set_id = key.split(":", 1) if key.startswith("ja:") else ("en", key)
+    s = tcgdex(op, f"{lang}/sets/{set_id}")
     official = (s.get("cardCount") or {}).get("official") or 0
     cands = []
     for c in s.get("cards", []):
@@ -496,22 +588,24 @@ def top_cards(op, set_id):
         if secret or BIG_CARD.search(c.get("name", "")):
             cands.append(c)
     with cf.ThreadPoolExecutor(max_workers=8) as ex:
-        details = list(ex.map(lambda c: tcgdex(op, f"/cards/{c['id']}"), cands))
-    cards = [dict(name=d.get("name"), number=f"{d.get('localId')}/{official}" if official else d.get("localId"),
-                  rarity=d.get("rarity") or "", eur=round(card_price_eur(d), 2),
+        details = list(ex.map(lambda c: tcgdex(op, f"{lang}/cards/{c['id']}"), cands))
+    cards = [dict(name=d.get("name") if lang == "en" else english_card_name(d, species or {}),
+                  number=f"{d.get('localId')}/{official}" if official else d.get("localId"),
+                  rarity="" if d.get("rarity") in (None, "None") else d["rarity"], eur=round(card_price_eur(d), 2),
                   image=(d.get("image") + "/low.webp") if d.get("image") else "")
              for d in details]
     cards = sorted((c for c in cards if c["eur"] > 0), key=lambda c: c["eur"], reverse=True)[:5]
-    return dict(name=s.get("name", set_id), cards=cards)
+    name = s.get("name", set_id) if lang == "en" else JA_SETS[set_id][0].title() + " (Japanese)"
+    return dict(name=name, cards=cards)
 
 
 def add_best_pulls(rows, rates, refresh=False):
-    """Attach the 5 most valuable cards of each English product's set. Returns {set_id: {...}}."""
+    """Attach the 5 most valuable cards of each English/Japanese product's set. Returns {set_key: {...}}."""
     cache = load_cache()
     op = opener_for("NO")
     try:
         if refresh or not fresh(cache.get("sets")):
-            lst = tcgdex(op, "/sets")
+            lst = tcgdex(op, "en/sets")
             cache["sets"] = dict(ts=time.time(), list=[[x["id"], x["name"]] for x in lst])
         order = cache["sets"]["list"]
         sets = [(norm_name(name), sid) for i, (sid, name) in enumerate(order)
@@ -521,16 +615,25 @@ def add_best_pulls(rows, rates, refresh=False):
     except Exception as e:
         print(f"  Warning: could not get card sets ({e}); skipping best pulls")
         return {}
+    ja_sets = sorted(((norm_name(alias), "ja:" + sid) for sid, aliases in JA_SETS.items() for alias in aliases),
+                     key=lambda x: -len(x[0]))
 
     for r in rows:
-        r["set"] = match_set(r["gname"], sets) if r["lang"] == "en" else None
+        if r["lang"] == "en":
+            r["set"] = match_set(r["gname"], sets)
+        elif r["lang"] == "jp":
+            r["set"] = match_set(r["title"], ja_sets, "jp") or match_set(r["gname"], ja_sets, "jp")
+        else:
+            r["set"] = None  # no card prices exist for Chinese/Korean-only sets
     needed = sorted({r["set"] for r in rows if r["set"]})
-    todo = [sid for sid in needed if refresh or not fresh(cache.get("top", {}).get(sid))]
+    top = cache.get("top", {})
+    todo = [sid for sid in needed if refresh or not fresh(top.get(sid)) or top[sid].get("v") != 2]
+    species = species_names(op, cache) if any(s.startswith("ja:") for s in todo) else {}
     if todo:
         print(f"Fetching best cards for {len(todo)} sets (cached for {CACHE_HOURS} h afterwards) ...")
     for sid in todo:
         try:
-            cache.setdefault("top", {})[sid] = dict(ts=time.time(), **top_cards(op, sid))
+            cache.setdefault("top", {})[sid] = dict(ts=time.time(), v=2, **top_cards(op, sid, species))
         except Exception as e:
             print(f"  Warning: could not get cards for set {sid}: {e}")
     try:
@@ -652,7 +755,7 @@ footer {{ color:var(--muted); font-size:13px; margin-top:24px; line-height:1.5; 
 <div class="sub">Cheapest Pokémon products from {len(shops)} shops that sell to Norway. Updated {stamp}.</div>
 <div class="info">Shops: {html.escape(shop_list)}.<br>
 Norwegian shops: price incl. VAT, shipping not included. Shops abroad are marked in orange: the price is converted to NOK ({html.escape(rate_text)}, {html.escape(rate_source)}), and shipping, and for some shops VAT/customs, come on top.<br>
-Best pulls: the 5 most valuable raw (ungraded) cards in each English product's set, using Cardmarket trend prices via TCGdex. Which cards you get is random - most packs contain none of them.</div>
+Best pulls: the 5 most valuable raw (ungraded) cards in each English and Japanese product's set, using Cardmarket trend prices via TCGdex. Chinese and Korean sets have no public card prices. Which cards you get is random - most packs contain none of them.</div>
 <div class="seg" id="views"><button data-v="compare">Compare shops</button><button data-v="list">All offers</button></div>
 <div class="tabs" id="tabs"></div>
 <div class="controls">
@@ -743,7 +846,8 @@ function renderCompare(rows) {{
     let h = `<tr class="grp" data-g="${{esc(g.key)}}">
       <td class="price">${{priceHtml(best)}}</td>
       <td><span class="caret">${{isOpen ? "▾" : "▸"}}</span>${{esc(g.name)}}<span class="small">Cheapest at ${{esc(best.shop)}}${{best.country !== "NO" ? " (" + COUNTRIES[best.country] + ")" : ""}}</span>
-        ${{pull ? `<span class="pull1">Best pull: ${{esc(pull.cards[0].name)}} ≈ ${{kr(pull.cards[0].nok)}}</span>` : ""}}</td>
+        ${{pull ? `<span class="pull1">Best pull: ${{esc(pull.cards[0].name)}} ≈ ${{kr(pull.cards[0].nok)}}</span>`
+          : `<span class="small">${{g.lang === "cn" || g.lang === "kr" ? "No card values exist for Chinese/Korean sets" : "Card values not available for this product"}}</span>`}}</td>
       <td><span class="pill">${{LANGS[g.lang] || g.lang}}</span></td>
       <td>${{g.shops}} ${{g.shops === 1 ? "shop" : "shops"}}</td>
       <td>${{g.shops > 1 ? kr(g.max) + `<span class="save">Save ${{kr(g.max - g.price)}}</span>` : "-"}}</td></tr>`;
