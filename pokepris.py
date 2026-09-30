@@ -110,20 +110,66 @@ SHOPS = {
         ("/category/japansk-booster-box-lzeiKfR8B8", "box", "jp"),
         ("/category/kinesisk-booster-box-M0rnHmjX1X", "box", "cn"),
     ]),
-    "Aquitaz": dict(kind="shopify", base="https://aquitaz.se", country="SE",
-                    note="Sendes fra Sverige. Frakt, og muligens norsk mva./toll, kommer i tillegg.", cats=[
-        ("pokemon-booster-packs", "pack", None),
-        ("pokemon-booster-box", "box", None),
-        ("pokemon-booster-display", "box", None),
-        ("pokemon-elite-trainer-boxes-etbs", "etb", None),
-        ("pokemon-booster-bundle", "bundle", None),
+    # --- more Norwegian shops. "auto" = the product type is read from the title, and in a whole-shop
+    # listing ("all") only Pokémon products are kept.
+    "Retroworld": dict(kind="shopify", base="https://retroworld.no", country="NO",
+                       cats=[("pokemon-tcg", "auto", None), ("asiatisk-pokemon", "auto", None)]),
+    "Laboge": dict(kind="shopify", base="https://laboge.no", country="NO", cats=[("sealed", "auto", None)]),
+    "Midgard Games": dict(kind="shopify", base="https://midgardgames.no", country="NO", cats=[
+        ("pokemon-booster", "auto", None), ("pokemon-display", "auto", None), ("pokemon-elite-trainer", "auto", None)]),
+    "Kube Alta": dict(kind="shopify", base="https://altakube.no", country="NO", cats=[("pokemon", "auto", None)]),
+    "Manaheim": dict(kind="shopify", base="https://manaheim.no", country="NO", cats=[
+        ("pokemon-tcg", "auto", None), ("pokemon-booster-packs", "auto", None), ("pokemon-blister-packs", "auto", None)]),
+    "Gamingsjappa": dict(kind="shopify", base="https://gamingsjappa.no", country="NO", cats=[("pokemon-tcg-kort", "auto", None)]),
+    "Arctic Loot": dict(kind="shopify", base="https://arcticloot.no", country="NO",
+                        cats=[("pokemon-se-alt", "auto", None), ("japansk-pokemon", "auto", "jp")]),
+    "Kortkompaniet": dict(kind="shopify", base="https://kortkompaniet.no", country="NO", cats=[("sealed", "auto", None)]),
+    "Lirum Larum Leg": dict(kind="shopify", base="https://www.lirumlarumleg.no", country="NO", cats=[("pokemon", "auto", None)]),
+    **{name: dict(kind="shopify", base=base, country="NO", cats=[("all", "auto", None)]) for name, base in [
+        ("Cardero", "https://www.cardero.no"), ("BoosterKongen", "https://boosterkongen.no"),
+        ("Kortbakeren", "https://kortbakeren.no"), ("Braspill", "https://braspill.no"), ("LittleM", "https://littlemtcg.no"),
+        ("Kortjungelen", "https://www.kortjungelen.no"), ("Loot Lagoon", "https://lootlagoon.no"),
+        ("Pokebua", "https://pokebua.no"), ("Packs of Norway", "https://packsofnorway.no"),
+        ("TCG Masters", "https://tcgmasters.no"), ("King of Breaks", "https://kingofbreaks.no"),
+        ("Samleboden", "https://samleboden.no"), ("CardChase", "https://cardchase.no"), ("Spillbua", "https://spillbua.no"),
+        ("PokéFriends", "https://pokefriends.no"), ("Pokélink", "https://pokelink.no"),
+        ("Collectors Corner", "https://collectorscorner.no"), ("Game and Trade", "https://gameandtrade.no"),
+        ("PokeButikk", "https://pokebutikk.no"), ("PokeMint", "https://pokemint.no"),
+        ("Viridia Nordic", "https://viridianordic.no"), ("Spillwill", "https://spillwill.no"), ("Pokeplug", "https://pokeplug.no")]},
+    # WooCommerce shops (searched through their public Store API)
+    **{name: dict(kind="woo", base=base, country="NO", cats=[]) for name, base in [
+        ("KanonCon", "https://www.kanoncon.no"), ("Playlot", "https://playlot.no"), ("Game Ninja", "https://www.gameninja.no"),
+        ("Spillmonster", "https://spillmonster.no"), ("Ringo", "https://www.ringo.no"), ("PokéBoks", "https://pokeboks.no"),
+        ("Pokechest", "https://www.pokechest.no")]},
+    "Pokebud": dict(kind="nb_new", base="https://pokebud.no", country="NO", cats=[
+        ("/category/pokmon-YREG0JfPg", "auto", None),
+        ("/category/kinesisk-booster-box-bTZ58CiR0", "box", "cn"), ("/category/kinesisk-booster-pack-avtSrb3Ip", "pack", "cn"),
+        ("/category/koreansk-booster-box-pVkMniKTt", "box", "kr"), ("/category/koreansk-booster-pack-lwiKzS6nu", "pack", "kr"),
     ]),
-    "Bescards": dict(kind="shopify", base="https://www.bescards.com", country="NL",
-                     note="Sendes fra Nederland. Toll/mva. betales i kassen (DDP); frakt kommer i tillegg.", cats=[
-        ("pokemon-booster-packs", "pack", None),
-        ("pokemon-booster-boxes", "box", None),
-        ("pokemon-elite-trainer-box", "etb", None),
-        ("pokemon-booster-bundles", "bundle", None),
+    "Gem Mint Collectibles": dict(kind="nb_new", base="https://gemmintcollectibles.no", country="NO", cats=[
+        ("/category/booster-box-PjNNwdVXy", "box", None), ("/category/booster-packs-YkEG0iR5C", "pack", None),
+        ("/category/bundles-JhazU4Dt0", "bundle", None), ("/category/elite-trainer-box-Z0M7jbMXF", "etb", None),
+        ("/category/blister-Wv0E0hEND", "pack", None),
+        ("/category/booster-bokser-japansk-pWkMWwqO9", "box", "jp"), ("/category/booster-packs-japansk-dz464XFvG", "pack", "jp"),
+        ("/category/booster-box-chinese-Arszsbv5X", "box", "cn"), ("/category/booster-packs-chinese-HxVrjTKsw", "pack", "cn"),
+    ]),
+    "Emken": dict(kind="nb_classic", base="https://emken.no", country="NO", cats=[
+        ("/butikk/spill-samling/pokemon/kort/boosterbokser", "box", None),
+        ("/butikk/spill-samling/pokemon/kort/boosterpakker", "pack", None),
+        ("/butikk/spill-samling/pokemon/kort/elite-trainer-box", "etb", None),
+    ]),
+    # Quickbutik shops
+    "Pokecandy": dict(kind="quickbutik", base="https://pokecandy.no", country="NO", cats=[
+        ("/pokemon-engelsk", "auto", None), ("/pokemon-etbupccollections", "auto", None),
+        ("/pokemon-japansk", "auto", "jp"), ("/pokemon-kinesisk", "auto", "cn"),
+    ]),
+    "Cardhouse": dict(kind="quickbutik", base="https://cardhouse.no", country="NO", cats=[
+        ("/engelsk/booster-box", "auto", None), ("/pokemon-booster-box", "auto", None),
+        ("/engelsk/pokemon-booster-pakker", "auto", None), ("/pokemon-engelske-booster-pakker", "auto", None),
+        ("/engelsk/pokemon-3pk-blistere", "auto", None), ("/engelsk/pokemon-bundles", "auto", None),
+        ("/engelsk/pokemon-elite-trainer-box", "auto", None),
+        ("/japansk/pokemon-japanske-booster-bokser", "auto", "jp"), ("/japansk/pokemon-japanske-booster-pakker", "auto", "jp"),
+        ("/kinesisk/booster-bokser", "auto", "cn"), ("/kinesisk/booster-pakker", "auto", "cn"),
     ]),
 }
 
@@ -159,7 +205,7 @@ def parse_kr(s):
 def detect_lang(text):
     """Language from words like 'Japansk'/'Korean' or codes like (JP), [CN], (CH), SV6-JP."""
     t = text.lower()
-    if re.search(r"\[(?:frans|fr|duits|de|it|es)\]|\((?:fr|de|it|es)\)|french|francais|german|deutsch|italian|spanish", t):
+    if re.search(r"\[(?:frans|fr|duits|de|it|es)\]|\((?:fr|de|it|es)\)|french|francais|german|deutsch|italian|spanish|portugis|portugu", t):
         return "other"
     if re.search(r"japansk|japanese|japan\b|\bjpn?\b", t):
         return "jp"
@@ -172,8 +218,13 @@ def detect_lang(text):
 
 def classify(title, default):
     """Product type from the title, with the shop's category as fallback.
-    default 'mixed' = a collection-box category where only ETBs and bundles are wanted."""
+    default 'mixed' = a collection-box category where only ETBs and bundles are wanted,
+    'auto' = a category (or whole shop) with all kinds of products."""
+    if default == "auto":
+        return classify_auto(title)
     t = f" {title.lower()}"
+    if ACCESSORY.search(t):
+        return None  # display cases, sleeves etc. listed next to the real products
     if "elite trainer" in t or " etb" in t:
         return "etb"
     if "bundle" in t:
@@ -189,6 +240,33 @@ def classify(title, default):
     if default == "pack" and ("booster box" in t or "display" in t):
         return None
     return default
+
+
+ACCESSORY = re.compile(r"sleeves?\b|binder|\bperm\b|playmat|deck ?box|toploader|code card|portfolio|\bmappe\b|plush|bamse|"
+                       r"figur|album|akryl|acrylic|displaykasse|protector|beskytt|ultra ?pro|\bcharm\b|magnet")
+
+
+def classify_auto(title):
+    """Product type from the title alone; None for everything that isn't a pack, bundle, booster box or ETB."""
+    t = f" {title.lower()} "
+    if ACCESSORY.search(t) or re.search(r"\bcase\b", t):
+        return None
+    if "elite trainer" in t or re.search(r"\betb\b", t):
+        return "etb"
+    if "bundle" in t:
+        return None if re.search(r"display|\b10 ?(?:stk|pcs|x)?\b", t) else "bundle"
+    if re.search(r"\btins?\b|collection|kolleksjon|build (?:&|and|og) battle|premium|\bdeck\b|stadium|mystery|random|"
+                 r"surprise|gavesett|gift|advent|julekalender|\bgraded\b|\bpsa\b|\bcgc\b", t):
+        return None
+    if re.search(r"booster ?-?(?:box|boks|display)|boosterbo(?:x|ks)|display ?box|\bdisplay\b", t):
+        return "box"
+    if re.search(r"booster ?-?(?:pack|pakke|pakker)|boosterpak|sleeved|blister|\bbooster\b", t):
+        return "pack"
+    return None
+
+
+def is_pokemon(text):
+    return ("pokemon" in text.lower() or "pokémon" in text.lower() or "pokèmon" in text.lower()) and not is_other_game(text)
 
 
 def variant_kind(variant_title, default):
@@ -270,12 +348,14 @@ def read_shopify(shop, cfg, op, out):
     counts = {}
     for handle, ptype, lang in cfg["cats"]:
         n = 0
-        for page_no in range(1, 11):
+        for page_no in range(1, 21):
             products = json.loads(fetch(op, f"{base}/collections/{handle}/products.json?limit=250&page={page_no}")).get("products", [])
             for p in products:
                 title = p["title"].strip()
                 meta = f"{title} {p.get('vendor', '')} {p.get('product_type', '')}"
                 if is_other_game(meta):
+                    continue
+                if ptype == "auto" and not is_pokemon(f"{meta} {' '.join(p.get('tags') or [])}"):
                     continue
                 kind = classify(title, ptype)
                 if kind is None:
@@ -320,7 +400,8 @@ def read_nettbutikk(shop, cfg, op, out):
         url, n, seen = base + path, 0, set()
         for page_no in range(1, 16):
             page = fetch(op, url)
-            items = parse_nb_classic(page) if cfg["kind"] == "nb_classic" else parse_nb_new(page)
+            items = (parse_nb_classic(page) if cfg["kind"] == "nb_classic" else
+                     parse_quickbutik(page, base) if cfg["kind"] == "quickbutik" else parse_nb_new(page))
             new = [it for it in items if it["url"] not in seen]
             for it in new:
                 seen.add(it["url"])
@@ -375,12 +456,55 @@ def parse_nb_new(page):
     return items
 
 
+def parse_quickbutik(page, base):
+    items = []
+    for c in page.split('data-qb-selector="product-item"')[1:]:
+        price = re.search(r'data-price="([\d.]+)"', c[:3000])
+        name = re.search(r'data-s-title="([^"]+)"', c[:3000]) or re.search(r"<h3[^>]*>\s*(.*?)\s*</h3>", c, re.S)
+        url = re.search(r'<a[^>]+href="(/[^"]+)"', c)
+        if not (price and name and url):
+            continue
+        text = strip_tags(c[:8000]).lower()
+        in_stock = not any(w in text for w in ("utsolgt", "slutsåld", "tomt på lager", "ikke på lager"))
+        items.append(dict(title=strip_tags(name.group(1)), url=base + url.group(1), price=float(price.group(1)),
+                          in_stock=in_stock))
+    return items
+
+
+def read_woo(shop, cfg, op, out):
+    """WooCommerce shops: search the public Store API for Pokémon products."""
+    base, seen, n = cfg["base"], set(), 0
+    for q in ("pokemon", "pok%C3%A9mon"):
+        for page_no in range(1, 21):
+            products = json.loads(fetch(op, f"{base}/wp-json/wc/store/v1/products?search={q}&per_page=100&page={page_no}"))
+            for p in products:
+                if p["id"] in seen:
+                    continue
+                seen.add(p["id"])
+                title = strip_tags(p["name"])
+                meta = f"{title} {' '.join(c.get('name', '') for c in p.get('categories') or [])}"
+                kind = classify_auto(title) if is_pokemon(meta) else None
+                if kind is None:
+                    continue
+                pr = p.get("prices") or {}
+                unit = 10 ** int(pr.get("currency_minor_unit", 2))
+                price, regular = int(pr.get("price") or 0) / unit, int(pr.get("regular_price") or 0) / unit
+                out.append(dict(key=(p["id"], kind), title=title, type=kind, lang=detect_lang(meta), price=price,
+                                currency=pr.get("currency_code") or "NOK", was=regular if regular > price else None,
+                                in_stock=bool(p.get("is_in_stock")), url=p["permalink"]))
+                n += 1
+            if len(products) < 100:
+                break
+            time.sleep(0.3)
+    return {"search": n}
+
+
 def scrape_shop(shop):
     cfg = SHOPS[shop]
     op = opener_for(cfg["country"])
     raw, error = [], None
     try:
-        reader = read_shopify if cfg["kind"] == "shopify" else read_nettbutikk
+        reader = {"shopify": read_shopify, "woo": read_woo}.get(cfg["kind"], read_nettbutikk)
         counts = reader(shop, cfg, op, raw)
     except Exception as e:  # network errors, changed websites, etc.
         counts, error = {}, f"{shop}: {e}"
@@ -862,7 +986,7 @@ footer { color:var(--muted); font-size:13px; margin-top:18px; line-height:1.5; }
 </div>
 <div class="controls">
   <label class="chk"><input type="checkbox" id="stock" checked> Kun på lager</label>
-  <label class="chk"><input type="checkbox" id="abroad" checked> Ta med utenlandske butikker</label>
+  <label class="chk" hidden><input type="checkbox" id="abroad" checked> Ta med utenlandske butikker</label>
   <label class="chk"><input type="checkbox" id="multi"> Kun produkter fra 2+ butikker</label>
   <div class="seg" id="views"><button data-v="gallery">Galleri</button><button data-v="list">Alle tilbud</button></div>
 </div>
@@ -872,7 +996,7 @@ footer { color:var(--muted); font-size:13px; margin-top:18px; line-height:1.5; }
 <div class="table" id="listwrap" hidden><table><thead id="head"></thead><tbody id="rows"></tbody></table></div>
 <details class="info"><summary>Om prisene og sjansene</summary>
 <p>Butikker: __SHOPLIST__.</p>
-<p>Norske butikker: pris inkl. mva., frakt kommer i tillegg. Utenlandske butikker er merket med oransje: prisen er regnet om til kroner (__RATES__, __RATESRC__), og frakt, og for noen butikker mva./toll, kommer i tillegg.</p>
+<p>Alle butikkene er norske. Prisene er inkl. mva., frakt kommer i tillegg.</p>
 <p>Topp 5 kort: de mest verdifulle ugraderte kortene i settet til hvert engelske og japanske produkt, med trendpriser fra Cardmarket via TCGdex. Kinesiske og koreanske sett har ingen offentlige kortpriser.</p>
 <p>Sjansene er grove anslag, ikke offisielle tall: vi regner med at et toppkort (special illustration rare eller sjeldnere) dukker opp i omtrent 1 av 86 pakker, og at et sett har rundt 10 slike. Gullkort og Mega hyper rare er sjeldnere enn det, og japanske sett er annerledes, så bruk prosentene bare som en pekepinn. De fleste pakker inneholder ingen av topp 5.</p>
 </details>
@@ -944,7 +1068,7 @@ function ring(p) {
 function renderTop() {
   const all = build(DATA.filter(r => r.in_stock));
   // a saving over 45% is usually two different products grouped together, not a real deal
-  const cands = all.filter(g => g.pull && pic(g.pull) && g.lang === "en" && g.shops > 1 && (g.type === "etb" || g.type === "box")
+  const cands = all.filter(g => g.pull && pic(g.pull) && g.value >= 300 && g.lang === "en" && g.shops > 1 && (g.type === "etb" || g.type === "box")
     && g.max > g.price && (g.max - g.price) / g.max <= 0.45);
   cands.sort((a, b) => (b.max - b.price) / b.max - (a.max - a.price) / a.max);
   const h = cands[0];
