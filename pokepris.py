@@ -29,9 +29,13 @@ from pathlib import Path
 REPORT = Path(__file__).with_name("pokepris_rapport.html")
 UA = "Mozilla/5.0 (pokepris price checker; personal use)"
 
-TYPE_NAMES = {"pack": "Booster pack", "box": "Booster box", "etb": "Elite Trainer Box"}
+TYPE_NAMES = {"pack": "Booster pack", "box": "Booster box", "etb": "Elite Trainer Box", "bundle": "Booster bundle"}
+KINDS = ("pack", "box", "etb", "bundle")
 LANG_NAMES = {"en": "English", "jp": "Japanese", "cn": "Chinese", "kr": "Korean", "other": "Other language"}
 COUNTRY_NAMES = {"NO": "Norway", "SE": "Sweden", "NL": "Netherlands"}
+# Norwegian names for the website
+LANG_NAMES_NO = {"en": "Engelsk", "jp": "Japansk", "cn": "Kinesisk", "kr": "Koreansk", "other": "Annet språk"}
+COUNTRY_NAMES_NO = {"NO": "Norge", "SE": "Sverige", "NL": "Nederland"}
 
 # Used only if Norges Bank can't be reached (NOK per 1 unit).
 FALLBACK_RATES = {"NOK": 1.0, "EUR": 10.84, "SEK": 0.9601, "DKK": 1.4501, "USD": 9.3}
@@ -48,6 +52,7 @@ SHOPS = {
         ("booster-boxer", "box", None),
         ("japansk-booster-box", "box", "jp"),
         ("elite-trainer-boxer", "etb", None),
+        ("collection-bokser", "mixed", None),
     ]),
     "PokéNordic": dict(kind="shopify", base="https://www.pokenordic.no", country="NO", cats=[
         ("booster-pakker", "pack", None),
@@ -56,6 +61,7 @@ SHOPS = {
         ("booster-box", "box", None),
         ("japanske-booster-bokser", "box", "jp"),
         ("elite-trainer-box", "etb", None),
+        ("booster-bundle", "bundle", None),
     ]),
     "Pokestore": dict(kind="shopify", base="https://pokestore.no", country="NO", cats=[
         ("pokemon-booster-pakker", "pack", None),
@@ -65,17 +71,20 @@ SHOPS = {
         ("japanske-pokemon-booster-bokser", "box", "jp"),
         ("kinesiske-pokemon-booster-bokser", "box", "cn"),
         ("pokemon-elite-trainer-box", "etb", None),
+        ("pokemon-booster-bundle", "bundle", None),
     ]),
     "Pokelageret": dict(kind="shopify", base="https://pokelageret.no", country="NO", cats=[
         ("booster-pakker", "pack", None),
         ("booster-box-en", "box", "en"),
         ("booster-box-jp", "box", "jp"),
         ("pokemon-elite-trainer-box", "etb", None),
+        ("booster-bundle", "bundle", None),
     ]),
     "EpiCards": dict(kind="shopify", base="https://epicards.no", country="NO", cats=[
         ("booster-pakker", "pack", None),
         ("booster-display", "box", None),
         ("pokemon-elite-trainer-box", "etb", None),
+        ("pokemon-special-collection-box", "mixed", None),
     ]),
     "Card Kings": dict(kind="nb_classic", base="https://www.cardkings.no", country="NO", cats=[
         ("/butikk/pokemon/booster-pakker", "pack", None),
@@ -90,6 +99,7 @@ SHOPS = {
         ("/butikk/booster-bokser/japanske-booster-bokser", "box", "jp"),
         ("/butikk/booster-bokser/kinesiske-booster-bokser", "box", "cn"),
         ("/butikk/booster-bokser/koreanske-booster-bokser", "box", "kr"),
+        ("/butikk/collection-bokser", "mixed", None),
     ]),
     "PokeWorld": dict(kind="nb_new", base="https://pokeworld.no", country="NO", cats=[
         ("/category/booster-pakker-049TmW31Pr", "pack", None),
@@ -101,17 +111,19 @@ SHOPS = {
         ("/category/kinesisk-booster-box-M0rnHmjX1X", "box", "cn"),
     ]),
     "Aquitaz": dict(kind="shopify", base="https://aquitaz.se", country="SE",
-                    note="Ships from Sweden. Shipping, and possibly Norwegian VAT/customs, come on top.", cats=[
+                    note="Sendes fra Sverige. Frakt, og muligens norsk mva./toll, kommer i tillegg.", cats=[
         ("pokemon-booster-packs", "pack", None),
         ("pokemon-booster-box", "box", None),
         ("pokemon-booster-display", "box", None),
         ("pokemon-elite-trainer-boxes-etbs", "etb", None),
+        ("pokemon-booster-bundle", "bundle", None),
     ]),
     "Bescards": dict(kind="shopify", base="https://www.bescards.com", country="NL",
-                     note="Ships from the Netherlands. Customs/VAT are paid at checkout (DDP); shipping comes on top.", cats=[
+                     note="Sendes fra Nederland. Toll/mva. betales i kassen (DDP); frakt kommer i tillegg.", cats=[
         ("pokemon-booster-packs", "pack", None),
         ("pokemon-booster-boxes", "box", None),
         ("pokemon-elite-trainer-box", "etb", None),
+        ("pokemon-booster-bundles", "bundle", None),
     ]),
 }
 
@@ -159,17 +171,22 @@ def detect_lang(text):
 
 
 def classify(title, default):
+    """Product type from the title, with the shop's category as fallback.
+    default 'mixed' = a collection-box category where only ETBs and bundles are wanted."""
     t = f" {title.lower()}"
     if "elite trainer" in t or " etb" in t:
         return "etb"
-    if default == "etb":
-        return None  # gift boxes, Build & Battle etc. listed alongside ETBs
-    if default == "box" and ("bundle" in t or " case" in t):
-        return None  # bundles and multi-box cases aren't a single booster box
+    if "bundle" in t:
+        # a "Booster Bundle Display"/case holds 10 bundles - not one bundle
+        return None if re.search(r" case|display|\b10 ?(?:stk|stuks?|pcs)\b", t) else "bundle"
+    if default in ("etb", "bundle", "mixed"):
+        return None  # gift boxes, Build & Battle etc. listed alongside ETBs/bundles
+    if default == "box" and " case" in t:
+        return None  # multi-box cases aren't a single booster box
     is_pack = any(w in t for w in ("boosterpakke", "booster pakke", "booster pack", "boosterpack"))
     if default == "box" and is_pack and not any(w in t for w in (" box", " boks", "display")):
         return "pack"  # single pack filed under a box collection
-    if default == "pack" and ("booster box" in t or "display" in t or "bundle" in t):
+    if default == "pack" and ("booster box" in t or "display" in t):
         return None
     return default
 
@@ -177,6 +194,10 @@ def classify(title, default):
 def variant_kind(variant_title, default):
     """Some shops sell a single pack as a variant of the booster box product."""
     t = (variant_title or "").lower()
+    if default == "bundle" and re.search(r"display|case|\b10\b", t):
+        return None  # "Display (10 bundles)" sold as a variant of the bundle
+    if default in ("etb", "bundle"):
+        return default
     if "pack" in t or "pakke" in t:
         return "pack"
     if "box" in t or "boks" in t or "display" in t:
@@ -185,7 +206,7 @@ def variant_kind(variant_title, default):
 
 
 GROUP_DROP = set("""pokemon tcg the trading card game booster boosters boosterpakke boosterpakker pakke pakker pack
-packs box boks bokser boxes display elite trainer etb engelsk engelske english eng en japansk japanske japanese jp jpn
+packs box boks bokser boxes display bundle elite trainer etb engelsk engelske english eng en japansk japanske japanese jp jpn
 kinesisk kinesiske chinese cn ch koreansk koreanske korean kr kor sett set utgave edition maks per pers stk kunde kunder
 ny new preorder forhandsbestilling forhandssalg og and of i""".split())
 SERIES = ("mega evolution", "scarlet violet", "scarlet and violet", "sword shield", "sword and shield", "sun moon",
@@ -211,7 +232,7 @@ def group_key(title, kind, lang):
     return f"{kind}|{lang}|{' '.join(words)}"
 
 
-MIN_PRICE = {"pack": 5, "box": 100, "etb": 100}  # below this it's a placeholder price, not a real one
+MIN_PRICE = {"pack": 5, "box": 100, "etb": 100, "bundle": 100}  # below this it's a placeholder price, not a real one
 
 
 def is_other_game(text):
@@ -261,7 +282,9 @@ def read_shopify(shop, cfg, op, out):
                     continue
                 groups = {}
                 for v in p.get("variants") or []:
-                    groups.setdefault(variant_kind(v.get("title"), kind), []).append(v)
+                    vk = variant_kind(v.get("title"), kind)
+                    if vk:
+                        groups.setdefault(vk, []).append(v)
                 for vkind, variants in groups.items():
                     avail = [v for v in variants if v.get("available")]
                     v = min(avail or variants, key=lambda v: float(v["price"]))
@@ -659,7 +682,7 @@ def kr(x):
     return f"{x:,.0f} kr".replace(",", " ")
 
 
-def print_table(rows, top, kinds=("pack", "box", "etb"), pulls=None):
+def print_table(rows, top, kinds=KINDS, pulls=None):
     pulls = pulls or {}
     for kind in kinds:
         groups = group_offers(rows, kind)[:top]
@@ -688,183 +711,416 @@ def oslo_now():
         return datetime.now()
 
 
-def write_html(rows, shops, rates, rate_source, pulls=None, site=False, out=None):
-    data = json.dumps(rows, ensure_ascii=False)
-    pulls_json = json.dumps(pulls or {}, ensure_ascii=False)
-    stamp = oslo_now().strftime("%d.%m.%Y %H:%M")
-    shop_list = ", ".join(shops)
-    rate_text = ", ".join(f"1 {c} = {v:.2f} kr" for c, v in rates.items() if c in ("EUR", "SEK"))
-    name = "Pokémonpris" if site else "Pokepris"
-    meta = ('<meta name="description" content="Compare prices on Pokémon booster packs, booster boxes and Elite '
-            'Trainer Boxes from shops that sell to Norway, and see the most valuable cards in each set.">') if site else ""
-    footer = ("""<footer>Pokémonpris is an independent fan site and is not affiliated with Nintendo, The Pokémon Company
-or any of the shops. Prices are collected automatically once a day and can be wrong or out of date - always check the price
-in the shop before you buy. Card values: Cardmarket trend prices via TCGdex. Exchange rates: Norges Bank.</footer>""") if site else ""
-    page = f"""<!doctype html>
+PAGE_TEMPLATE = r"""<!doctype html>
 <html lang="no"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{name}</title>{meta}
+<title>__NAME__</title>__META__
+<meta name="color-scheme" content="dark">
 <style>
-:root {{ --bg:#f6f7fb; --card:#fff; --ink:#1d2433; --muted:#667085; --line:#e4e7ec; --accent:#e3350d; --good:#067647; --warn:#b54708; }}
-@media (prefers-color-scheme: dark) {{ :root {{ --bg:#10131a; --card:#191d27; --ink:#e7eaf0; --muted:#98a2b3; --line:#2a3040; --accent:#ff6b4a; --good:#47cd89; --warn:#fdb022; }} }}
-body {{ margin:0; font:15px/1.45 system-ui,Segoe UI,sans-serif; background:var(--bg); color:var(--ink); }}
-.wrap {{ max-width:1150px; margin:0 auto; padding:24px 16px 60px; }}
-h1 {{ margin:0 0 4px; font-size:26px; }} .sub {{ color:var(--muted); margin-bottom:18px; }}
-.controls {{ display:flex; flex-wrap:wrap; gap:8px; margin-bottom:16px; }}
-input, select {{ font:inherit; padding:8px 10px; border:1px solid var(--line); border-radius:8px; background:var(--card); color:var(--ink); }}
-input[type=search] {{ flex:1 1 240px; }}
-label.chk {{ display:flex; align-items:center; gap:6px; color:var(--muted); }}
-.tabs {{ display:flex; gap:6px; margin-bottom:12px; flex-wrap:wrap; }}
-.tab {{ border:1px solid var(--line); background:var(--card); color:var(--ink); padding:7px 14px; border-radius:999px; cursor:pointer; font:inherit; }}
-.tab.on {{ background:var(--accent); border-color:var(--accent); color:#fff; }}
-.table {{ overflow-x:auto; background:var(--card); border:1px solid var(--line); border-radius:12px; }}
-table {{ width:100%; border-collapse:collapse; }}
-th, td {{ padding:10px 12px; text-align:left; border-bottom:1px solid var(--line); vertical-align:top; }}
-th {{ font-size:12px; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); cursor:pointer; white-space:nowrap; }}
-td.price {{ font-weight:700; white-space:nowrap; font-variant-numeric:tabular-nums; }}
-.was {{ color:var(--muted); text-decoration:line-through; font-weight:400; font-size:13px; margin-left:6px; }}
-.orig {{ display:block; color:var(--muted); font-weight:400; font-size:12px; }}
-.pill {{ font-size:12px; padding:2px 8px; border-radius:999px; border:1px solid var(--line); white-space:nowrap; }}
-.abroad {{ color:var(--warn); font-size:12px; display:block; }}
-.out {{ color:var(--muted); }} .ok {{ color:var(--good); }}
-a {{ color:inherit; }} .count {{ color:var(--muted); margin:8px 2px; }}
-.info {{ background:var(--card); border:1px solid var(--line); border-radius:12px; padding:10px 14px; margin-bottom:16px; color:var(--muted); font-size:14px; }}
-.seg {{ display:inline-flex; border:1px solid var(--line); border-radius:10px; overflow:hidden; margin:0 0 12px; }}
-.seg button {{ border:0; background:var(--card); color:var(--ink); padding:7px 14px; font:inherit; cursor:pointer; }}
-.seg button.on {{ background:var(--ink); color:var(--bg); }}
-tr.grp {{ cursor:pointer; }} tr.grp:hover td {{ background:rgba(127,127,127,.07); }}
-tr.detail > td {{ padding:0 0 6px; background:var(--bg); }}
-.offers {{ width:100%; border-collapse:collapse; }}
-.offers td {{ padding:7px 12px; font-size:14px; border-bottom:1px solid var(--line); }}
-.offers td:first-child {{ padding-left:34px; }}
-.best {{ color:var(--good); font-weight:700; font-size:12px; margin-left:6px; }}
-.caret {{ color:var(--muted); display:inline-block; width:16px; }}
-.small {{ color:var(--muted); font-size:13px; display:block; }}
-.save {{ color:var(--good); font-size:12px; display:block; }}
-[hidden] {{ display:none !important; }}
-.pulls {{ padding:10px 12px 12px 34px; }}
-.pulls h4 {{ margin:4px 0 8px; font-size:13px; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); }}
-.cards {{ display:grid; grid-template-columns:repeat(auto-fill, minmax(150px, 1fr)); gap:10px; }}
-.cardbox {{ background:var(--card); border:1px solid var(--line); border-radius:10px; padding:8px; display:flex; gap:8px; align-items:flex-start; }}
-.cardbox img {{ width:52px; border-radius:4px; flex:none; }}
-.cardbox b {{ display:block; font-size:13px; line-height:1.3; }}
-.cardbox .p {{ color:var(--good); font-weight:700; font-size:14px; }}
-.pull1 {{ color:var(--good); font-size:12px; display:block; }}
-footer {{ color:var(--muted); font-size:13px; margin-top:24px; line-height:1.5; }}
-</style></head><body><div class="wrap">
-<h1>{name}</h1>
-<div class="sub">Cheapest Pokémon products from {len(shops)} shops that sell to Norway. Updated {stamp}.</div>
-<div class="info">Shops: {html.escape(shop_list)}.<br>
-Norwegian shops: price incl. VAT, shipping not included. Shops abroad are marked in orange: the price is converted to NOK ({html.escape(rate_text)}, {html.escape(rate_source)}), and shipping, and for some shops VAT/customs, come on top.<br>
-Best pulls: the 5 most valuable raw (ungraded) cards in each English and Japanese product's set, using Cardmarket trend prices via TCGdex. Chinese and Korean sets have no public card prices. Which cards you get is random - most packs contain none of them.</div>
-<div class="seg" id="views"><button data-v="compare">Compare shops</button><button data-v="list">All offers</button></div>
-<div class="tabs" id="tabs"></div>
+:root { --bg:#0B1020; --top:#10172B; --panel:#141B30; --field:#1B2340; --line:#243056; --line2:#2E3A60;
+  --ink:#E8ECF6; --muted:#8C97B8; --gold:#FFCB05; --gold-ink:#2A2100; --good:#5FD68F; --good-bg:#123524;
+  --odds:#B9A6FF; --odds-bg:#221C45; --abroad:#F0A04B; }
+* { box-sizing:border-box; }
+body { margin:0; font:15px/1.45 system-ui,"Segoe UI",sans-serif; background:var(--bg); color:var(--ink); }
+a { color:inherit; }
+[hidden] { display:none !important; }
+header.bar { background:var(--top); border-bottom:1px solid #222C4A; }
+header .in { max-width:1150px; margin:0 auto; padding:12px 16px; display:flex; align-items:center; gap:10px; }
+.logo { font-weight:600; font-size:20px; letter-spacing:-.01em; } .logo span { color:var(--gold); }
+.ball { width:20px; height:20px; flex:none; }
+.upd { margin-left:auto; color:var(--muted); font-size:13px; white-space:nowrap; }
+.wrap { max-width:1150px; margin:0 auto; padding:18px 16px 60px; }
+.muted { color:var(--muted); } .gold { color:var(--gold); font-weight:600; } .good { color:var(--good); } .oddc { color:var(--odds); }
+.chip { display:inline-block; font-size:12px; padding:2px 8px; border-radius:5px; white-space:nowrap; }
+.chip.gold { background:var(--gold); color:var(--gold-ink); font-weight:500; }
+.chip.save { background:var(--good-bg); color:var(--good); }
+.chip.odds { background:var(--odds-bg); color:#CFC3FF; }
+.chip.lang { background:var(--field); color:#C9D1EA; }
+/* A: hero */
+.hero { display:flex; align-items:center; gap:20px; padding:18px 20px; border-radius:14px; background:#17162A;
+  border:1px solid #3A3210; cursor:pointer; margin-bottom:12px; }
+.hero:hover { border-color:var(--gold); }
+.hero .txt { flex:1; min-width:0; }
+.hero h2 { margin:10px 0 2px; font-size:22px; line-height:1.25; }
+.hero .pr { display:flex; align-items:baseline; flex-wrap:wrap; gap:10px; margin-top:12px; }
+.hero .big { font-size:30px; }
+.hero .strike { color:var(--muted); text-decoration:line-through; }
+.hero .oddrow { display:flex; align-items:center; gap:12px; margin-top:14px; }
+.hero img { width:150px; border-radius:8px; flex:none; transform:rotate(3deg); }
+.spots { display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:10px; margin-bottom:22px; }
+.spot { display:flex; gap:10px; align-items:center; background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:10px 12px; cursor:pointer; }
+.spot:hover { border-color:var(--line2); }
+.spot img { width:44px; border-radius:4px; flex:none; }
+.spot .t { font-size:12px; color:var(--muted); }
+.spot .n { font-size:14px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+/* filters */
+.pills { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:10px; }
+.pill { border:0; background:#1C2544; color:#C9D1EA; padding:6px 14px; border-radius:999px; cursor:pointer; font:inherit; font-size:14px; }
+.pill.on { background:var(--gold); color:var(--gold-ink); font-weight:500; }
+.controls { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-bottom:12px; }
+input[type=search], select { font:inherit; font-size:14px; padding:8px 12px; border:1px solid var(--line2); border-radius:999px; background:var(--field); color:var(--ink); }
+input[type=search] { flex:1 1 260px; }
+label.chk { display:flex; align-items:center; gap:6px; color:var(--muted); font-size:14px; }
+input[type=checkbox] { accent-color:var(--gold); }
+.seg { display:inline-flex; border:1px solid var(--line2); border-radius:999px; overflow:hidden; margin-left:auto; }
+.seg button { border:0; background:transparent; color:var(--muted); padding:6px 14px; font:inherit; font-size:14px; cursor:pointer; }
+.seg button.on { background:var(--field); color:var(--ink); }
+.count { color:var(--muted); margin:6px 2px 10px; font-size:14px; }
+/* B: gallery */
+.grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(190px, 1fr)); gap:12px; grid-auto-flow:dense; }
+.tile { background:var(--panel); border:1px solid var(--line); border-radius:12px; overflow:hidden; cursor:pointer; display:flex; flex-direction:column; }
+.tile:hover { border-color:var(--line2); }
+.tile.open { border-color:var(--gold); }
+.tile .art { height:130px; display:flex; align-items:center; justify-content:center; position:relative; }
+.tile .art img { height:112px; border-radius:5px; }
+.tile .art .chip { position:absolute; top:8px; right:8px; }
+.tile .art .chip.lang { left:8px; right:auto; }
+.tile .body { padding:10px 12px 12px; display:flex; flex-direction:column; gap:2px; flex:1; }
+.tile .name { font-weight:500; line-height:1.3; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+.tile .meta { font-size:12px; color:var(--muted); }
+.tile .price { margin-top:auto; padding-top:6px; display:flex; align-items:baseline; gap:8px; flex-wrap:wrap; }
+.tile .price .gold { font-size:17px; }
+.meter { height:5px; background:var(--line); border-radius:3px; margin-top:6px; overflow:hidden; }
+.meter i { display:block; height:5px; background:var(--odds); border-radius:3px; min-width:3px; }
+.tile .odds { font-size:12px; color:var(--odds); margin-top:3px; }
+.tile .none { font-size:12px; color:var(--muted); margin-top:6px; }
+.abroad { color:var(--abroad); }
+.more { display:block; margin:16px auto 0; }
+button.btn { font:inherit; font-size:14px; background:var(--field); color:var(--ink); border:1px solid var(--line2); border-radius:999px; padding:8px 18px; cursor:pointer; }
+/* C: detail */
+.detail { grid-column:1 / -1; background:var(--top); border:1px solid var(--gold); border-radius:14px; padding:16px; }
+.detail .hd { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:14px; }
+.detail .hd h3 { margin:0; font-size:19px; }
+.detail .x { margin-left:auto; background:transparent; border:0; color:var(--muted); font-size:22px; cursor:pointer; line-height:1; }
+.cols { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1.35fr); gap:18px; }
+.lbl { color:var(--muted); font-size:13px; margin:0 0 8px; display:flex; justify-content:space-between; gap:8px; }
+.offer { display:flex; align-items:center; gap:10px; padding:9px 12px; background:var(--panel); border:1px solid var(--line); border-radius:10px; margin-bottom:6px; text-decoration:none; }
+.offer:hover { border-color:var(--line2); }
+.offer.first { border-color:var(--gold); }
+.offer .s { flex:1; min-width:0; }
+.offer .s small { display:block; font-size:12px; }
+.offer .p { text-align:right; white-space:nowrap; font-variant-numeric:tabular-nums; }
+.offer .p small { display:block; font-size:12px; color:var(--muted); }
+.offer.out { opacity:.6; }
+.was { color:var(--muted); text-decoration:line-through; font-size:12px; margin-left:4px; }
+.hunt { background:#1A1530; border:1px solid #3A2F6B; border-radius:10px; padding:12px; margin-top:12px; font-size:14px; }
+.hunt b { color:var(--odds); font-weight:500; display:block; margin-bottom:4px; }
+.cards5 { display:grid; grid-template-columns:repeat(5, minmax(0,1fr)); gap:8px; }
+.c5 { text-align:center; font-size:12px; }
+.c5 img, .c5 .ph { width:100%; aspect-ratio:245 / 342; border-radius:6px; display:block; border:1px solid var(--line); background:var(--panel); }
+.c5.top img { border:2px solid var(--gold); }
+.c5 .nm { margin-top:4px; line-height:1.25; min-height:2.5em; }
+.bars { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:12px; margin-top:12px; }
+.bar { display:grid; grid-template-columns:150px minmax(0,1fr) 52px; gap:10px; align-items:center; font-size:13px; margin-top:6px; }
+.bar .tr { height:7px; background:var(--line); border-radius:4px; overflow:hidden; }
+.bar .tr i { display:block; height:7px; background:var(--odds); border-radius:4px; min-width:3px; }
+.bar.me { color:var(--gold); } .bar.me .tr i { background:var(--gold); }
+.bar span:last-child { text-align:right; font-variant-numeric:tabular-nums; }
+/* list view */
+.table { overflow-x:auto; background:var(--panel); border:1px solid var(--line); border-radius:12px; }
+table { width:100%; border-collapse:collapse; }
+th, td { padding:10px 12px; text-align:left; border-bottom:1px solid var(--line); vertical-align:top; font-size:14px; }
+th { font-size:12px; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); cursor:pointer; white-space:nowrap; }
+td.pr { font-weight:600; color:var(--gold); white-space:nowrap; }
+details.info { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:10px 14px; margin-top:26px; color:var(--muted); font-size:14px; }
+details.info summary { cursor:pointer; color:var(--ink); }
+details.info p { margin:8px 0 0; }
+footer { color:var(--muted); font-size:13px; margin-top:18px; line-height:1.5; }
+@media (max-width:760px) {
+  .cols { grid-template-columns:1fr; }
+  .cards5 { grid-template-columns:repeat(3, minmax(0,1fr)); }
+  .bar { grid-template-columns:110px minmax(0,1fr) 46px; }
+  .seg { margin-left:0; }
+}
+@media (max-width:520px) {
+  .upd { display:none; }
+  .hero { padding:14px; } .hero img { width:96px; } .hero h2 { font-size:18px; } .hero .big { font-size:24px; }
+  .grid { grid-template-columns:repeat(2, minmax(0,1fr)); gap:8px; }
+  .tile .art { height:110px; } .tile .art img { height:94px; }
+}
+</style></head><body>
+<header class="bar"><div class="in">
+  <svg class="ball" viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="8.5" fill="#10172B" stroke="#FFCB05" stroke-width="2"/><path d="M1.5 10h17" stroke="#FFCB05" stroke-width="2"/><circle cx="10" cy="10" r="2.6" fill="#10172B" stroke="#FFCB05" stroke-width="2"/></svg>
+  <span class="logo">__LOGO__</span>
+  <span class="upd">__SHOPCOUNT__ butikker · oppdatert __STAMP__</span>
+</div></header>
+<div class="wrap">
+<section class="hero" id="hero" hidden></section>
+<div class="spots" id="spots"></div>
+<div class="pills" id="tabs"></div>
 <div class="controls">
-  <input type="search" id="q" placeholder="Search, e.g. Ascended Heroes, 151, Prismatic ...">
-  <select id="lang"><option value="">All languages</option><option value="en">English</option><option value="jp">Japanese</option><option value="cn">Chinese</option><option value="kr">Korean</option><option value="other">Other languages</option></select>
-  <select id="shop"><option value="">All shops</option></select>
-  <label class="chk"><input type="checkbox" id="stock" checked> In stock only</label>
-  <label class="chk"><input type="checkbox" id="abroad" checked> Include shops abroad</label>
-  <label class="chk"><input type="checkbox" id="multi"> Only products sold by 2+ shops</label>
+  <input type="search" id="q" placeholder="Søk etter et sett, f.eks. Chaos Rising, 151, Terastal ...">
+  <select id="sort">
+    <option value="popular">Populære først</option>
+    <option value="price">Billigst først</option>
+    <option value="save">Størst besparelse</option>
+    <option value="odds">Best sjanse for topp 5</option>
+    <option value="value">Mest verdifulle toppkort</option>
+    <option value="shops">Flest butikker</option>
+  </select>
+  <select id="lang"><option value="">Alle språk</option><option value="en">Engelsk</option><option value="jp">Japansk</option><option value="cn">Kinesisk</option><option value="kr">Koreansk</option><option value="other">Andre språk</option></select>
+  <select id="shop"><option value="">Alle butikker</option></select>
+</div>
+<div class="controls">
+  <label class="chk"><input type="checkbox" id="stock" checked> Kun på lager</label>
+  <label class="chk"><input type="checkbox" id="abroad" checked> Ta med utenlandske butikker</label>
+  <label class="chk"><input type="checkbox" id="multi"> Kun produkter fra 2+ butikker</label>
+  <div class="seg" id="views"><button data-v="gallery">Galleri</button><button data-v="list">Alle tilbud</button></div>
 </div>
 <div class="count" id="count"></div>
-<div class="table"><table><thead id="head"></thead><tbody id="rows"></tbody></table></div>
-{footer}
+<div class="grid" id="grid"></div>
+<button class="btn more" id="more" hidden>Vis flere</button>
+<div class="table" id="listwrap" hidden><table><thead id="head"></thead><tbody id="rows"></tbody></table></div>
+<details class="info"><summary>Om prisene og sjansene</summary>
+<p>Butikker: __SHOPLIST__.</p>
+<p>Norske butikker: pris inkl. mva., frakt kommer i tillegg. Utenlandske butikker er merket med oransje: prisen er regnet om til kroner (__RATES__, __RATESRC__), og frakt, og for noen butikker mva./toll, kommer i tillegg.</p>
+<p>Topp 5 kort: de mest verdifulle ugraderte kortene i settet til hvert engelske og japanske produkt, med trendpriser fra Cardmarket via TCGdex. Kinesiske og koreanske sett har ingen offentlige kortpriser.</p>
+<p>Sjansene er grove anslag, ikke offisielle tall: vi regner med at et toppkort (special illustration rare eller sjeldnere) dukker opp i omtrent 1 av 86 pakker, og at et sett har rundt 10 slike. Gullkort og Mega hyper rare er sjeldnere enn det, og japanske sett er annerledes, så bruk prosentene bare som en pekepinn. De fleste pakker inneholder ingen av topp 5.</p>
+</details>
+__FOOTER__
 </div>
 <script>
-const DATA = {data};
-const PULLS = {pulls_json};
-const TYPES = {{pack:"Booster packs", box:"Booster boxes", etb:"Elite Trainer Boxes"}};
-const LANGS = {json.dumps(LANG_NAMES)};
-const COUNTRIES = {json.dumps(COUNTRY_NAMES)};
-let type = "pack", view = "compare", sortKey = "price", asc = true;
-const opened = new Set();
+const DATA = __DATA__;
+const PULLS = __PULLS__;
+const TABS = {all:"Alle", pack:"Booster-pakker", etb:"Elite Trainer Box", box:"Booster-bokser", bundle:"Booster bundles"};
+const ONE = {pack:"booster-pakke", etb:"ETB", box:"booster-boks", bundle:"booster bundle"};
+const THE = {pack:"denne pakken", etb:"denne ETB-en", box:"denne boksen", bundle:"denne bundlen"};
+const LANGS = __LANGS__;
+const COUNTRIES = __COUNTRIES__;
+const TOP_TIER_PER_PACK = 1 / 86, TOP_TIER_IN_SET = 10, PAGE = 48;
+const TINTS = ["#1D1A3A","#12283A","#16301F","#2A1830","#3A1E14","#33300F","#14283A","#2B1E36"];
+let type = "all", view = "gallery", opened = null, limit = PAGE, listSort = "price", listAsc = true;
 const $ = id => document.getElementById(id);
-const esc = s => String(s).replace(/[&<>"]/g, c => ({{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}})[c]);
-const kr = n => n.toLocaleString("nb-NO", {{maximumFractionDigits:0}}) + " kr";
-for (const [k, v] of Object.entries(TYPES)) {{
-  const b = document.createElement("button"); b.className = "tab"; b.textContent = v; b.dataset.t = k;
-  b.onclick = () => {{ type = k; render(); }}; $("tabs").appendChild(b);
-}}
-document.querySelectorAll("#views button").forEach(b => b.onclick = () => {{ view = b.dataset.v; sortKey = "price"; asc = true; render(); }});
-[...new Set(DATA.map(r => r.shop))].sort().forEach(s => $("shop").add(new Option(s, s)));
-["q","lang","shop","stock","abroad","multi"].forEach(id => $(id).addEventListener("input", render));
-$("head").addEventListener("click", e => {{
-  const th = e.target.closest("th"); if (!th) return;
-  const k = th.dataset.k; asc = sortKey === k ? !asc : true; sortKey = k; render();
-}});
-$("rows").addEventListener("click", e => {{
-  const tr = e.target.closest("tr.grp"); if (!tr || e.target.closest("a")) return;
-  const g = tr.dataset.g; opened.has(g) ? opened.delete(g) : opened.add(g); render();
-}});
-const byKey = (a, b) => (a[sortKey] > b[sortKey] ? 1 : a[sortKey] < b[sortKey] ? -1 : 0) * (asc ? 1 : -1);
-const priceHtml = r => `${{r.country === "NO" ? "" : "≈ "}}${{kr(r.price)}}${{r.was && r.was > r.price ? `<span class="was">${{kr(r.was)}}</span>` : ""}}
-  ${{r.currency !== "NOK" ? `<span class="orig">${{r.orig_price.toFixed(2)}} ${{r.currency}}</span>` : ""}}`;
-const shopHtml = r => `${{esc(r.shop)}}${{r.country !== "NO" ? `<span class="abroad" title="${{esc(r.note)}}">From ${{COUNTRIES[r.country]}} - ${{esc(r.note)}}</span>` : ""}}`;
-const stockHtml = r => `<span class="${{r.in_stock ? "ok" : "out"}}">${{r.in_stock ? "In stock" : "Sold out"}}</span>`;
-const head = cols => $("head").innerHTML = "<tr>" + cols.map(([k, label]) => `<th data-k="${{k}}">${{label}}${{sortKey === k ? (asc ? " ▲" : " ▼") : ""}}</th>`).join("") + "</tr>";
+const esc = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"})[c]);
+const kr = n => Math.round(n).toLocaleString("nb-NO") + " kr";
+const pct = p => { const v = p * 100; return (v < 10 ? v.toFixed(1) : String(Math.round(v))).replace(/\.0$/, "").replace(".", ",") + " %"; };
+const oneIn = p => "1 av " + Math.max(1, Math.round(1 / p)).toLocaleString("nb-NO");
+const hash = s => [...String(s)].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7);
+const tint = s => TINTS[hash(s) % TINTS.length];
+const bigImg = u => u.replace("/low.webp", "/high.webp");
+const pic = pull => pull && pull.cards.find(c => c.image);
+const BALL = `<svg width="56" height="56" viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="8.5" fill="none" stroke="#2E3A60" stroke-width="1.5"/><path d="M1.5 10h17" stroke="#2E3A60" stroke-width="1.5"/><circle cx="10" cy="10" r="2.6" fill="#0B1020" stroke="#2E3A60" stroke-width="1.5"/></svg>`;
 
-function render() {{
-  document.querySelectorAll(".tab").forEach(b => b.classList.toggle("on", b.dataset.t === type));
-  document.querySelectorAll("#views button").forEach(b => b.classList.toggle("on", b.dataset.v === view));
-  $("multi").parentElement.hidden = view !== "compare";
-  const words = $("q").value.toLowerCase().split(/\\s+/).filter(Boolean);
-  const rows = DATA.filter(r => r.type === type
+function defaultPacks(t, lang) { return {pack:1, bundle:6, etb:9, box:lang === "jp" ? 30 : 36}[t]; }
+function packsOf(offers, t, lang) {
+  for (const o of offers) {
+    const m = /(\d+)\s*(?:x\s*)?(?:booster\s*)?(?:packs?|pakker|pakke|boosters)\b/i.exec(o.title);
+    if (m && +m[1] >= 1 && +m[1] <= 60 && (t !== "box" || +m[1] >= 10)) return +m[1];
+  }
+  return defaultPacks(t, lang);
+}
+const perCard = () => TOP_TIER_PER_PACK / TOP_TIER_IN_SET;
+const oddsAny = (n, packs) => 1 - Math.pow(1 - n * perCard(), packs);
+const oddsOne = packs => 1 - Math.pow(1 - perCard(), packs);
+
+function build(rows) {
+  const m = new Map();
+  rows.forEach(r => { if (!m.has(r.group)) m.set(r.group, []); m.get(r.group).push(r); });
+  return [...m.values()].map(o => {
+    o.sort((a, b) => a.price - b.price);
+    const f = o[0], set = (o.find(x => x.set) || {}).set, pull = PULLS[set];
+    const packs = packsOf(o, f.type, f.lang), n = pull ? Math.min(5, pull.cards.length) : 0;
+    return { key: f.group, name: f.gname, lang: f.lang, type: f.type, offers: o, price: f.price, best: f,
+             max: o[o.length - 1].price, shops: new Set(o.map(x => x.shop)).size, pull, packs, n,
+             odds: pull ? oddsAny(n, packs) : 0, value: pull ? pull.cards[0].nok : 0 };
+  });
+}
+const priceTxt = r => (r.country === "NO" ? "" : "≈ ") + kr(r.price);
+
+function filtered() {
+  const words = $("q").value.toLowerCase().split(/\s+/).filter(Boolean);
+  return DATA.filter(r => (type === "all" || r.type === type)
     && (!$("lang").value || r.lang === $("lang").value)
     && (!$("shop").value || r.shop === $("shop").value)
     && (!$("stock").checked || r.in_stock)
     && ($("abroad").checked || r.country === "NO")
     && words.every(w => (r.title + " " + r.gname).toLowerCase().includes(w)));
-  view === "compare" ? renderCompare(rows) : renderList(rows);
-}}
+}
 
-function renderList(rows) {{
-  head([["price","Price"],["title","Product"],["lang","Language"],["shop","Shop"],["in_stock","Stock"]]);
-  rows.sort(byKey);
-  $("count").textContent = rows.length + " offers";
-  $("rows").innerHTML = rows.map(r => `<tr>
-    <td class="price">${{priceHtml(r)}}</td>
-    <td><a href="${{esc(r.url)}}" target="_blank" rel="noopener">${{esc(r.title)}}</a></td>
-    <td><span class="pill">${{LANGS[r.lang] || r.lang}}</span></td>
-    <td>${{shopHtml(r)}}</td><td>${{stockHtml(r)}}</td></tr>`).join("");
-}}
+/* ---------- A: hero + spotlights ---------- */
+function ring(p) {
+  const c = 2 * Math.PI * 15;
+  return `<svg width="44" height="44" viewBox="0 0 38 38" aria-hidden="true" style="flex:none"><circle cx="19" cy="19" r="15" fill="none" stroke="#2A2F55" stroke-width="5"/><circle cx="19" cy="19" r="15" fill="none" stroke="#B9A6FF" stroke-width="5" stroke-dasharray="${Math.max(1.5, p * c).toFixed(1)} ${c.toFixed(1)}" transform="rotate(-90 19 19)"/></svg>`;
+}
+function renderTop() {
+  const all = build(DATA.filter(r => r.in_stock));
+  // a saving over 45% is usually two different products grouped together, not a real deal
+  const cands = all.filter(g => g.pull && pic(g.pull) && g.lang === "en" && g.shops > 1 && (g.type === "etb" || g.type === "box")
+    && g.max > g.price && (g.max - g.price) / g.max <= 0.45);
+  cands.sort((a, b) => (b.max - b.price) / b.max - (a.max - a.price) / a.max);
+  const h = cands[0];
+  if (h) {
+    const c = h.pull.cards[0], img = pic(h.pull);
+    $("hero").hidden = false;
+    $("hero").dataset.g = h.key;
+    $("hero").innerHTML = `<div class="txt">
+      <span class="chip gold">Dagens beste kjøp</span>
+      <h2>${esc(h.name)}</h2>
+      <div class="muted">Billigst hos ${esc(h.best.shop)}${h.best.country !== "NO" ? " (" + COUNTRIES[h.best.country] + ")" : ""} · ${h.shops} butikker sammenlignet</div>
+      <div class="pr"><span class="gold big">${priceTxt(h.best)}</span><span class="strike">${kr(h.max)}</span><span class="chip save">Spar ${kr(h.max - h.price)}</span></div>
+      <div class="oddrow">${ring(h.odds)}<div><div><span class="oddc" style="font-weight:600">≈ ${pct(h.odds)}</span> sjanse for et topp 5-kort i ${THE[h.type]}</div>
+        <div class="muted" style="font-size:13px">Beste: ${esc(c.name)} ≈ ${kr(c.nok)} · anslag</div></div></div>
+    </div><img src="${esc(bigImg(img.image))}" alt="${esc(img.name)}">`;
+  }
+  const spots = [["box", "Billigste booster-boks"], ["etb", "Billigste ETB"], ["pack", "Billigste booster-pakke"]].map(([t, label]) => {
+    const g = all.filter(x => x.type === t && x.pull && x.best.country === "NO").sort((a, b) => a.price - b.price)[0];
+    if (!g) return "";
+    const c = pic(g.pull);
+    return `<div class="spot" data-g="${esc(g.key)}">${c ? `<img src="${esc(c.image)}" alt="" loading="lazy">` : ""}
+      <div style="min-width:0"><div class="t">${label}</div><div class="n">${esc(g.name)}</div>
+      <div><span class="gold">${kr(g.price)}</span> <span class="chip odds">topp 5 ≈ ${pct(g.odds)}</span></div></div></div>`;
+  });
+  $("spots").innerHTML = spots.join("");
+}
+function jumpTo(key) {
+  const g = build(DATA.filter(r => r.group === key))[0];
+  if (!g) return;
+  type = "all"; $("q").value = ""; $("lang").value = ""; $("shop").value = ""; $("multi").checked = false;
+  $("stock").checked = true; $("abroad").checked = true; view = "gallery"; opened = key;
+  const order = sortGroups(build(filtered()));
+  limit = Math.max(PAGE, order.findIndex(x => x.key === key) + 1);
+  render();
+  const el = document.querySelector(`.tile[data-g="${CSS.escape(key)}"]`);
+  if (el) el.scrollIntoView({behavior: "smooth", block: "start"});
+}
 
-function renderCompare(rows) {{
-  const m = new Map();
-  rows.forEach(r => {{ if (!m.has(r.group)) m.set(r.group, []); m.get(r.group).push(r); }});
-  let groups = [...m.values()].map(o => {{
-    o.sort((a, b) => a.price - b.price);
-    return {{ key: o[0].group, name: o[0].gname, lang: o[0].lang, offers: o, price: o[0].price,
-             max: o[o.length - 1].price, shops: new Set(o.map(x => x.shop)).size }};
-  }});
-  if ($("multi").checked) groups = groups.filter(g => g.shops > 1);
-  head([["price","Cheapest"],["name","Product"],["lang","Language"],["shops","Shops"],["max","Most expensive"]]);
-  groups.sort(byKey);
-  $("count").textContent = `${{groups.length}} products (${{rows.length}} offers) - click a product to see every shop`;
-  $("rows").innerHTML = groups.map(g => {{
-    const best = g.offers[0], isOpen = opened.has(g.key);
-    const pull = PULLS[(g.offers.find(o => o.set) || {{}}).set];
-    let h = `<tr class="grp" data-g="${{esc(g.key)}}">
-      <td class="price">${{priceHtml(best)}}</td>
-      <td><span class="caret">${{isOpen ? "▾" : "▸"}}</span>${{esc(g.name)}}<span class="small">Cheapest at ${{esc(best.shop)}}${{best.country !== "NO" ? " (" + COUNTRIES[best.country] + ")" : ""}}</span>
-        ${{pull ? `<span class="pull1">Best pull: ${{esc(pull.cards[0].name)}} ≈ ${{kr(pull.cards[0].nok)}}</span>`
-          : `<span class="small">${{g.lang === "cn" || g.lang === "kr" ? "No card values exist for Chinese/Korean sets" : "Card values not available for this product"}}</span>`}}</td>
-      <td><span class="pill">${{LANGS[g.lang] || g.lang}}</span></td>
-      <td>${{g.shops}} ${{g.shops === 1 ? "shop" : "shops"}}</td>
-      <td>${{g.shops > 1 ? kr(g.max) + `<span class="save">Save ${{kr(g.max - g.price)}}</span>` : "-"}}</td></tr>`;
-    if (isOpen) h += `<tr class="detail"><td colspan="5"><table class="offers">` + g.offers.map((r, i) => `<tr>
-        <td class="price">${{priceHtml(r)}}${{i === 0 ? '<span class="best">Cheapest</span>' : ""}}</td>
-        <td>${{shopHtml(r)}}</td><td>${{stockHtml(r)}}</td>
-        <td><a href="${{esc(r.url)}}" target="_blank" rel="noopener">${{esc(r.title)}}</a></td></tr>`).join("") + `</table>` +
-      (pull ? `<div class="pulls"><h4>5 most valuable cards in ${{esc(pull.name)}} (raw, Cardmarket trend price)</h4><div class="cards">` +
-        pull.cards.map(c => `<div class="cardbox">${{c.image ? `<img src="${{esc(c.image)}}" alt="" loading="lazy">` : ""}}<div>
-          <b>${{esc(c.name)}}</b><span class="small">#${{esc(c.number)}}${{c.rarity ? " · " + esc(c.rarity) : ""}}</span>
-          <span class="p">≈ ${{kr(c.nok)}}</span><span class="small">${{c.eur.toFixed(2)}} EUR</span></div></div>`).join("") + `</div></div>` : "") +
-      `</td></tr>`;
-    return h;
-  }}).join("");
-}}
+/* ---------- B: gallery ---------- */
+function sortGroups(gs) {
+  const s = $("sort").value;
+  const f = {popular: (a, b) => !!pic(b.pull) - !!pic(a.pull) || (b.lang === "en") - (a.lang === "en") || b.shops - a.shops || a.price - b.price,
+             price: (a, b) => a.price - b.price, save: (a, b) => (b.max - b.price) - (a.max - a.price),
+             odds: (a, b) => b.odds - a.odds || a.price - b.price, value: (a, b) => b.value - a.value || a.price - b.price,
+             shops: (a, b) => b.shops - a.shops || a.price - b.price}[s];
+  return gs.sort(f);
+}
+function tile(g) {
+  const c = pic(g.pull);
+  const art = c ? `<img src="${esc(c.image)}" alt="${esc(c.name)}" loading="lazy">` : BALL;
+  const odds = g.pull
+    ? `<div class="meter"><i style="width:${Math.min(100, g.odds * 100)}%"></i></div><div class="odds">${oneIn(g.odds)} får et topp 5-kort</div>`
+    : `<div class="none">${g.lang === "cn" || g.lang === "kr" ? "Ingen kortverdier for kinesiske/koreanske sett" : "Ingen kortverdier for dette produktet"}</div>`;
+  return `<div class="tile${opened === g.key ? " open" : ""}" data-g="${esc(g.key)}">
+    <div class="art" style="background:${tint(g.pull ? g.pull.name : g.key)}">${art}
+      ${g.lang !== "en" ? `<span class="chip lang">${esc((LANGS[g.lang] || g.lang).slice(0, 3).toUpperCase())}</span>` : ""}
+      ${g.pull ? `<span class="chip odds">≈ ${pct(g.odds)}</span>` : ""}</div>
+    <div class="body"><div class="name">${esc(g.name)}</div>
+      <div class="meta">${ONE[g.type] ? ONE[g.type][0].toUpperCase() + ONE[g.type].slice(1) : ""} · ${g.packs} ${g.packs === 1 ? "pakke" : "pakker"} · ${g.shops} ${g.shops === 1 ? "butikk" : "butikker"}</div>
+      <div class="price"><span class="gold${g.best.country !== "NO" ? " abroad" : ""}">${priceTxt(g.best)}</span>${g.shops > 1 && g.max > g.price ? `<span class="chip save">Spar ${kr(g.max - g.price)}</span>` : ""}</div>
+      ${odds}</div></div>`;
+}
+
+/* ---------- C: detail ---------- */
+function detail(g) {
+  const offers = g.offers.map((r, i) => `<a class="offer${i === 0 ? " first" : ""}${r.in_stock ? "" : " out"}" href="${esc(r.url)}" target="_blank" rel="noopener">
+      <span class="s">${i === 0 ? "👑 " : ""}${esc(r.shop)}${r.country !== "NO" ? ` <span class="abroad">${COUNTRIES[r.country]}</span>` : ""}
+        <small class="${r.in_stock ? "good" : "muted"}">${r.in_stock ? "På lager" : "Utsolgt"}${r.country !== "NO" ? ` · <span class="abroad">${esc(r.note)}</span>` : ""}</small></span>
+      <span class="p"><span class="${i === 0 ? "gold" : ""}">${priceTxt(r)}</span>${r.was && r.was > r.price ? `<span class="was">${kr(r.was)}</span>` : ""}
+        ${r.currency !== "NOK" ? `<small>${r.orig_price.toFixed(2).replace(".", ",")} ${r.currency}</small>` : "<small>Til butikken ↗</small>"}</span></a>`).join("");
+  let right = `<p class="muted">${g.lang === "cn" || g.lang === "kr" ? "Det finnes ingen offentlige kortpriser for kinesiske og koreanske sett, så dette produktet har ingen toppkort eller sjanser." : "Vi fant ikke hvilket kortsett dette produktet hører til, så det har ingen toppkort eller sjanser."}</p>`;
+  let hunt = "";
+  if (g.pull) {
+    const one = oddsOne(g.packs);
+    const cards = g.pull.cards.slice(0, 5).map((c, i) => `<div class="c5${i === 0 ? " top" : ""}">
+        ${c.image ? `<img src="${esc(c.image)}" alt="${esc(c.name)}" loading="lazy">` : `<div class="ph"></div>`}
+        <div class="nm">${esc(c.name)}</div><div class="${i === 0 ? "gold" : ""}">${kr(c.nok)}</div><div class="oddc">≈ ${pct(one)}</div></div>`).join("");
+    const rows = [["pack", 1], ["bundle", 6], ["etb", 9], ["box", defaultPacks("box", g.lang)]].map(([t, p]) => [ONE[t][0].toUpperCase() + ONE[t].slice(1) + ` (${p})`, p]);
+    if (!rows.some(r => r[1] === g.packs)) rows.push([`Dette produktet (${g.packs})`, g.packs]);
+    rows.sort((a, b) => a[1] - b[1]);
+    const bars = rows.map(([label, p]) => { const o = oddsAny(g.n, p);
+      return `<div class="bar${p === g.packs ? " me" : ""}"><span>${label}</span><div class="tr"><i style="width:${Math.min(100, o * 100)}%"></i></div><span>${pct(o)}</span></div>`; }).join("");
+    right = `<div class="lbl"><span>Topp ${g.n} kort i ${esc(g.pull.name)} · sjanse per ${ONE[g.type]}</span><span class="oddc">Minst ett ≈ ${pct(g.odds)}</span></div>
+      <div class="cards5">${cards}</div>
+      <div class="bars"><div class="lbl" style="margin:0"><span>Sjanse for minst ett topp ${g.n}-kort</span><span>anslag</span></div>${bars}</div>`;
+    const packsNeeded = 1 / (g.n * perCard()), perPack = g.price / g.packs, c = g.pull.cards[0];
+    hunt = `<div class="hunt"><b>Jakte eller kjøpe?</b>
+      I snitt må du åpne rundt ${Math.round(packsNeeded).toLocaleString("nb-NO")} pakker for å få ett av topp ${g.n}-kortene ≈ <span class="muted">${kr(packsNeeded * perPack)}</span> med denne prisen.<br>
+      Kjøpe ${esc(c.name)} direkte: <span class="gold">${kr(c.nok)}</span>.</div>`;
+  }
+  return `<div class="detail" id="detail"><div class="hd"><h3>${esc(g.name)}</h3>
+      <span class="chip lang">${LANGS[g.lang] || g.lang}</span><span class="chip odds">${g.packs} ${g.packs === 1 ? "pakke" : "pakker"}</span>
+      <button class="x" id="close" aria-label="Lukk">×</button></div>
+    <div class="cols"><div><div class="lbl"><span>Priser i butikkene</span><span>${g.shops} ${g.shops === 1 ? "butikk" : "butikker"}</span></div>${offers}${hunt}</div>
+      <div>${right}</div></div></div>`;
+}
+
+function renderGallery(rows) {
+  let gs = build(rows);
+  if ($("multi").checked) gs = gs.filter(g => g.shops > 1);
+  sortGroups(gs);
+  $("count").textContent = `${gs.length} produkter (${rows.length} tilbud) · klikk på et produkt for å se alle butikkene og toppkortene`;
+  const shown = gs.slice(0, limit);
+  let h = "";
+  shown.forEach(g => { h += tile(g); if (g.key === opened) h += detail(g); });
+  $("grid").innerHTML = h;
+  $("more").hidden = gs.length <= limit;
+  const x = $("close"); if (x) x.onclick = e => { e.stopPropagation(); opened = null; render(); };
+}
+
+/* ---------- list view ---------- */
+function renderList(rows) {
+  const cols = [["price","Pris"],["title","Produkt"],["lang","Språk"],["shop","Butikk"],["in_stock","Lager"]];
+  $("head").innerHTML = "<tr>" + cols.map(([k, l]) => `<th data-k="${k}">${l}${listSort === k ? (listAsc ? " ▲" : " ▼") : ""}</th>`).join("") + "</tr>";
+  rows.sort((a, b) => (a[listSort] > b[listSort] ? 1 : a[listSort] < b[listSort] ? -1 : 0) * (listAsc ? 1 : -1));
+  $("count").textContent = rows.length + " tilbud";
+  $("rows").innerHTML = rows.map(r => `<tr><td class="pr${r.country !== "NO" ? " abroad" : ""}">${priceTxt(r)}</td>
+    <td><a href="${esc(r.url)}" target="_blank" rel="noopener">${esc(r.title)}</a></td>
+    <td>${LANGS[r.lang] || r.lang}</td><td>${esc(r.shop)}${r.country !== "NO" ? ` <span class="abroad">(${COUNTRIES[r.country]})</span>` : ""}</td>
+    <td class="${r.in_stock ? "good" : "muted"}">${r.in_stock ? "På lager" : "Utsolgt"}</td></tr>`).join("");
+}
+
+function render() {
+  document.querySelectorAll("#tabs .pill").forEach(b => b.classList.toggle("on", b.dataset.t === type));
+  document.querySelectorAll("#views button").forEach(b => b.classList.toggle("on", b.dataset.v === view));
+  const rows = filtered();
+  $("grid").hidden = view !== "gallery"; $("listwrap").hidden = view !== "list";
+  $("multi").parentElement.hidden = $("sort").hidden = view !== "gallery";
+  if (view === "gallery") renderGallery(rows); else { $("more").hidden = true; renderList(rows); }
+}
+
+for (const [k, v] of Object.entries(TABS)) {
+  const b = document.createElement("button"); b.className = "pill"; b.textContent = v; b.dataset.t = k;
+  b.onclick = () => { type = k; limit = PAGE; render(); }; $("tabs").appendChild(b);
+}
+[...new Set(DATA.map(r => r.shop))].sort().forEach(s => $("shop").add(new Option(s, s)));
+["q","lang","shop","stock","abroad","multi","sort"].forEach(id => $(id).addEventListener("input", () => { limit = PAGE; render(); }));
+document.querySelectorAll("#views button").forEach(b => b.onclick = () => { view = b.dataset.v; render(); });
+$("more").onclick = () => { limit += PAGE; render(); };
+$("grid").addEventListener("click", e => {
+  const t = e.target.closest(".tile"); if (!t) return;
+  opened = opened === t.dataset.g ? null : t.dataset.g; render();
+  const d = $("detail"); if (d) d.scrollIntoView({behavior: "smooth", block: "nearest"});
+});
+$("head").addEventListener("click", e => {
+  const th = e.target.closest("th"); if (!th) return;
+  listAsc = listSort === th.dataset.k ? !listAsc : true; listSort = th.dataset.k; render();
+});
+$("hero").onclick = () => jumpTo($("hero").dataset.g);
+$("spots").addEventListener("click", e => { const s = e.target.closest(".spot"); if (s) jumpTo(s.dataset.g); });
+renderTop();
 render();
 </script></body></html>"""
+
+
+def write_html(rows, shops, rates, rate_source, pulls=None, site=False, out=None):
+    stamp = oslo_now().strftime("%d.%m.%Y %H:%M")
+    name = "Pokémonpris" if site else "Pokepris"
+    logo = "Pokémon<span>pris</span>" if site else "Poke<span>pris</span>"
+    meta = ('<meta name="description" content="Sammenlign priser på Pokémon booster-pakker, booster-bokser og Elite '
+            'Trainer Boxes fra butikker som selger til Norge, og se de mest verdifulle kortene i hvert sett.">') if site else ""
+    footer = ("""<footer>Pokémonpris er en uavhengig fanside og har ingen tilknytning til Nintendo, The Pokémon Company
+eller noen av butikkene. Prisene hentes automatisk to ganger om dagen og kan være feil eller utdaterte - sjekk alltid prisen
+i butikken før du kjøper. Kortverdier: trendpriser fra Cardmarket via TCGdex. Valutakurser: Norges Bank.
+Sjansene for å trekke kort er grove anslag, ikke offisielle tall.</footer>""") if site else ""
+    rate_text = ", ".join(f"1 {c} = {v:.2f} kr" for c, v in rates.items() if c in ("EUR", "SEK"))
+    parts = {
+        "__NAME__": name, "__LOGO__": logo, "__META__": meta, "__FOOTER__": footer, "__STAMP__": stamp,
+        "__SHOPCOUNT__": str(len(shops)), "__SHOPLIST__": html.escape(", ".join(shops)),
+        "__RATES__": html.escape(rate_text), "__RATESRC__": html.escape(rate_source),
+        "__LANGS__": json.dumps(LANG_NAMES_NO, ensure_ascii=False), "__COUNTRIES__": json.dumps(COUNTRY_NAMES_NO, ensure_ascii=False),
+        # "</" inside the JSON would end the <script> block early
+        "__PULLS__": json.dumps(pulls or {}, ensure_ascii=False).replace("</", "<\\/"),
+        "__DATA__": json.dumps(rows, ensure_ascii=False).replace("</", "<\\/"),
+    }
+    page = re.sub("|".join(parts), lambda m: parts[m.group(0)], PAGE_TEMPLATE)
     target = Path(out) if out else REPORT
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(page, encoding="utf-8")
@@ -875,7 +1131,7 @@ def main():
     ap = argparse.ArgumentParser(description="Cheapest Pokémon sealed products in shops that sell to Norway")
     ap.add_argument("--search", default="", help="only products whose name contains these words")
     ap.add_argument("--lang", default="all", choices=["all", "en", "jp", "cn", "kr", "other"])
-    ap.add_argument("--type", default="all", choices=["all", "pack", "box", "etb"])
+    ap.add_argument("--type", default="all", choices=["all", *KINDS])
     ap.add_argument("--top", type=int, default=10, help="how many to show per category")
     ap.add_argument("--all", action="store_true", help="include sold-out products in the list")
     ap.add_argument("--norway-only", action="store_true", help="only shops based in Norway")
@@ -906,7 +1162,7 @@ def main():
            and (args.lang == "all" or r["lang"] == args.lang)
            and (args.type == "all" or r["type"] == args.type)
            and all(w in r["title"].lower() for w in words)]
-    print_table(sel, args.top, ("pack", "box", "etb") if args.type == "all" else (args.type,), pulls)
+    print_table(sel, args.top, KINDS if args.type == "all" else (args.type,), pulls)
     print(f"\nFull list with search and filters: {report}")
     if not args.no_open:
         webbrowser.open(report.resolve().as_uri())
