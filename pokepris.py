@@ -369,7 +369,9 @@ def read_shopify(shop, cfg, op, out):
                     avail = [v for v in variants if v.get("available")]
                     v = min(avail or variants, key=lambda v: float(v["price"]))
                     suffix = "" if len(groups) == 1 or v.get("title") in (None, "Default Title") else f" ({v['title']})"
+                    img = (v.get("featured_image") or {}).get("src") or ((p.get("images") or [{}])[0]).get("src") or ""
                     out.append(dict(
+                        image=img + ("&" if "?" in img else "?") + "width=400" if img else "",
                         key=(p["handle"], vkind), title=title + suffix, type=vkind, lang=lang or detect_lang(meta),
                         price=float(v["price"]), currency=currency,
                         was=float(v["compare_at_price"]) if v.get("compare_at_price") else None,
@@ -410,7 +412,9 @@ def read_nettbutikk(shop, cfg, op, out):
                 kind = classify(it["title"], ptype)
                 if kind is None:
                     continue
+                img = it.get("image") or ""
                 out.append(dict(key=(it["url"], kind), title=it["title"], type=kind,
+                                image=base + img if img.startswith("/") else img,
                                 lang=lang or detect_lang(it["title"]), price=it["price"], currency="NOK",
                                 was=None, in_stock=it["in_stock"], url=it["url"]))
                 n += 1
@@ -432,8 +436,10 @@ def parse_nb_classic(page):
         name = re.search(r'itemprop="name"[^>]*>(.*?)</', a, re.S)
         price = re.search(r'itemprop="price" content="([\d.]+)"', a)
         av = re.search(r'itemprop="availability" href="[^"]*/(\w+)"', a)
+        img = re.search(r'<img[^>]+?src="([^"]+)"', a)
         if url and name and price:
             items.append(dict(title=strip_tags(name.group(1)), url=url.group(1), price=float(price.group(1)),
+                              image=html.unescape(img.group(1)) if img else "",
                               in_stock=bool(av) and av.group(1) in ("InStock", "LimitedAvailability", "OnlineOnly")))
     return items
 
@@ -452,7 +458,9 @@ def parse_nb_new(page):
             continue
         text = strip_tags(c[:20000]).lower()
         in_stock = not any(w in text for w in ("ikke på lager", "utsolgt", "tomt på lager"))
-        items.append(dict(title=name.strip(), url=url.group(1), price=value, in_stock=in_stock))
+        img = re.search(r'<img[^>]+?\ssrc="(https?://[^"]+)"', c[:6000], re.S)
+        items.append(dict(title=name.strip(), url=url.group(1), price=value, in_stock=in_stock,
+                          image=html.unescape(img.group(1)) if img else ""))
     return items
 
 
@@ -466,8 +474,9 @@ def parse_quickbutik(page, base):
             continue
         text = strip_tags(c[:8000]).lower()
         in_stock = not any(w in text for w in ("utsolgt", "slutsåld", "tomt på lager", "ikke på lager"))
+        img = re.search(r'<img[^>]+?\s(?:ix-)?src="(https?://[^"]+)"', c[:4000], re.S)
         items.append(dict(title=strip_tags(name.group(1)), url=base + url.group(1), price=float(price.group(1)),
-                          in_stock=in_stock))
+                          in_stock=in_stock, image=img.group(1) if img else ""))
     return items
 
 
@@ -489,7 +498,9 @@ def read_woo(shop, cfg, op, out):
                 pr = p.get("prices") or {}
                 unit = 10 ** int(pr.get("currency_minor_unit", 2))
                 price, regular = int(pr.get("price") or 0) / unit, int(pr.get("regular_price") or 0) / unit
+                img = (p.get("images") or [{}])[0]
                 out.append(dict(key=(p["id"], kind), title=title, type=kind, lang=detect_lang(meta), price=price,
+                                image=img.get("thumbnail") or img.get("src") or "",
                                 currency=pr.get("currency_code") or "NOK", was=regular if regular > price else None,
                                 in_stock=bool(p.get("is_in_stock")), url=p["permalink"]))
                 n += 1
@@ -894,8 +905,15 @@ input[type=checkbox] { accent-color:var(--gold); }
 .tile { background:var(--panel); border:1px solid var(--line); border-radius:12px; overflow:hidden; cursor:pointer; display:flex; flex-direction:column; }
 .tile:hover { border-color:var(--line2); }
 .tile.open { border-color:var(--gold); }
-.tile .art { height:130px; display:flex; align-items:center; justify-content:center; position:relative; }
+.tile .art { height:150px; display:flex; align-items:center; justify-content:center; position:relative; }
 .tile .art img { height:112px; border-radius:5px; }
+/* shop photos of the package: often on a white background, so show them on a white "label" */
+img.photo, img.heroimg, img.hdimg, img.oimg { background:#fff; object-fit:contain; border-radius:8px; }
+.tile .art img.photo { height:136px; width:136px; padding:4px; }
+.hero img.heroimg { width:190px; height:190px; padding:6px; transform:none; }
+.spot img.photo { width:52px; height:52px; padding:2px; }
+img.hdimg { width:64px; height:64px; padding:3px; flex:none; }
+.offer img.oimg { width:40px; height:40px; padding:2px; flex:none; }
 .tile .art .chip { position:absolute; top:8px; right:8px; }
 .tile .art .chip.lang { left:8px; right:auto; }
 .tile .body { padding:10px 12px 12px; display:flex; flex-direction:column; gap:2px; flex:1; }
@@ -957,9 +975,9 @@ footer { color:var(--muted); font-size:13px; margin-top:18px; line-height:1.5; }
 }
 @media (max-width:520px) {
   .upd { display:none; }
-  .hero { padding:14px; } .hero img { width:96px; } .hero h2 { font-size:18px; } .hero .big { font-size:24px; }
+  .hero { padding:14px; } .hero img, .hero img.heroimg { width:96px; height:auto; } .hero h2 { font-size:18px; } .hero .big { font-size:24px; }
   .grid { grid-template-columns:repeat(2, minmax(0,1fr)); gap:8px; }
-  .tile .art { height:110px; } .tile .art img { height:94px; }
+  .tile .art { height:130px; } .tile .art img { height:94px; } .tile .art img.photo { height:116px; width:116px; }
 }
 </style></head><body>
 <header class="bar"><div class="in">
@@ -1044,6 +1062,7 @@ function build(rows) {
     const f = o[0], set = (o.find(x => x.set) || {}).set, pull = PULLS[set];
     const packs = packsOf(o, f.type, f.lang), n = pull ? Math.min(5, pull.cards.length) : 0;
     return { key: f.group, name: f.gname, lang: f.lang, type: f.type, offers: o, price: f.price, best: f,
+             photo: (o.find(x => x.image) || {}).image || "",
              max: o[o.length - 1].price, shops: new Set(o.map(x => x.shop)).size, pull, packs, n,
              odds: pull ? oddsAny(n, packs) : 0, value: pull ? pull.cards[0].nok : 0 };
   });
@@ -1068,7 +1087,7 @@ function ring(p) {
 function renderTop() {
   const all = build(DATA.filter(r => r.in_stock));
   // a saving over 45% is usually two different products grouped together, not a real deal
-  const cands = all.filter(g => g.pull && pic(g.pull) && g.value >= 300 && g.lang === "en" && g.shops > 1 && (g.type === "etb" || g.type === "box")
+  const cands = all.filter(g => g.pull && (g.photo || pic(g.pull)) && g.value >= 300 && g.lang === "en" && g.shops > 1 && (g.type === "etb" || g.type === "box")
     && g.max > g.price && (g.max - g.price) / g.max <= 0.45);
   cands.sort((a, b) => (b.max - b.price) / b.max - (a.max - a.price) / a.max);
   const h = cands[0];
@@ -1083,13 +1102,12 @@ function renderTop() {
       <div class="pr"><span class="gold big">${priceTxt(h.best)}</span><span class="strike">${kr(h.max)}</span><span class="chip save">Spar ${kr(h.max - h.price)}</span></div>
       <div class="oddrow">${ring(h.odds)}<div><div><span class="oddc" style="font-weight:600">≈ ${pct(h.odds)}</span> sjanse for et topp 5-kort i ${THE[h.type]}</div>
         <div class="muted" style="font-size:13px">Beste: ${esc(c.name)} ≈ ${kr(c.nok)} · anslag</div></div></div>
-    </div><img src="${esc(bigImg(img.image))}" alt="${esc(img.name)}">`;
+    </div>${h.photo ? photoTag(h, "heroimg") : `<img src="${esc(bigImg(img.image))}" alt="${esc(img.name)}">`}`;
   }
   const spots = [["box", "Billigste booster-boks"], ["etb", "Billigste ETB"], ["pack", "Billigste booster-pakke"]].map(([t, label]) => {
     const g = all.filter(x => x.type === t && x.pull && x.best.country === "NO").sort((a, b) => a.price - b.price)[0];
     if (!g) return "";
-    const c = pic(g.pull);
-    return `<div class="spot" data-g="${esc(g.key)}">${c ? `<img src="${esc(c.image)}" alt="" loading="lazy">` : ""}
+    return `<div class="spot" data-g="${esc(g.key)}">${photoTag(g, "photo")}
       <div style="min-width:0"><div class="t">${label}</div><div class="n">${esc(g.name)}</div>
       <div><span class="gold">${kr(g.price)}</span> <span class="chip odds">topp 5 ≈ ${pct(g.odds)}</span></div></div></div>`;
   });
@@ -1107,18 +1125,25 @@ function jumpTo(key) {
   if (el) el.scrollIntoView({behavior: "smooth", block: "start"});
 }
 
+/* The shop's own picture of the package; if it's missing or fails to load, the top card, then a Poké Ball. */
+function photoTag(g, cls) {
+  const c = pic(g.pull), fallback = c ? c.image : "";
+  if (!g.photo) return fallback ? `<img src="${esc(fallback)}" alt="${esc(c.name)}" loading="lazy">` : BALL;
+  const onerr = fallback ? `this.onerror=null;this.className='';this.src='${esc(fallback)}'` : "this.remove()";
+  return `<img class="${cls}" src="${esc(g.photo)}" alt="${esc(g.name)}" loading="lazy" referrerpolicy="no-referrer" onerror="${onerr}">`;
+}
+
 /* ---------- B: gallery ---------- */
 function sortGroups(gs) {
   const s = $("sort").value;
-  const f = {popular: (a, b) => !!pic(b.pull) - !!pic(a.pull) || (b.lang === "en") - (a.lang === "en") || b.shops - a.shops || a.price - b.price,
+  const f = {popular: (a, b) => !!b.pull - !!a.pull || !!b.photo - !!a.photo || (b.lang === "en") - (a.lang === "en") || b.shops - a.shops || a.price - b.price,
              price: (a, b) => a.price - b.price, save: (a, b) => (b.max - b.price) - (a.max - a.price),
              odds: (a, b) => b.odds - a.odds || a.price - b.price, value: (a, b) => b.value - a.value || a.price - b.price,
              shops: (a, b) => b.shops - a.shops || a.price - b.price}[s];
   return gs.sort(f);
 }
 function tile(g) {
-  const c = pic(g.pull);
-  const art = c ? `<img src="${esc(c.image)}" alt="${esc(c.name)}" loading="lazy">` : BALL;
+  const art = photoTag(g, "photo");
   const odds = g.pull
     ? `<div class="meter"><i style="width:${Math.min(100, g.odds * 100)}%"></i></div><div class="odds">${oneIn(g.odds)} får et topp 5-kort</div>`
     : `<div class="none">${g.lang === "cn" || g.lang === "kr" ? "Ingen kortverdier for kinesiske/koreanske sett" : "Ingen kortverdier for dette produktet"}</div>`;
@@ -1135,6 +1160,7 @@ function tile(g) {
 /* ---------- C: detail ---------- */
 function detail(g) {
   const offers = g.offers.map((r, i) => `<a class="offer${i === 0 ? " first" : ""}${r.in_stock ? "" : " out"}" href="${esc(r.url)}" target="_blank" rel="noopener">
+      ${r.image ? `<img class="oimg" src="${esc(r.image)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">` : ""}
       <span class="s">${i === 0 ? "👑 " : ""}${esc(r.shop)}${r.country !== "NO" ? ` <span class="abroad">${COUNTRIES[r.country]}</span>` : ""}
         <small class="${r.in_stock ? "good" : "muted"}">${r.in_stock ? "På lager" : "Utsolgt"}${r.country !== "NO" ? ` · <span class="abroad">${esc(r.note)}</span>` : ""}</small></span>
       <span class="p"><span class="${i === 0 ? "gold" : ""}">${priceTxt(r)}</span>${r.was && r.was > r.price ? `<span class="was">${kr(r.was)}</span>` : ""}
@@ -1159,7 +1185,7 @@ function detail(g) {
       I snitt må du åpne rundt ${Math.round(packsNeeded).toLocaleString("nb-NO")} pakker for å få ett av topp ${g.n}-kortene ≈ <span class="muted">${kr(packsNeeded * perPack)}</span> med denne prisen.<br>
       Kjøpe ${esc(c.name)} direkte: <span class="gold">${kr(c.nok)}</span>.</div>`;
   }
-  return `<div class="detail" id="detail"><div class="hd"><h3>${esc(g.name)}</h3>
+  return `<div class="detail" id="detail"><div class="hd">${g.photo ? photoTag(g, "hdimg") : ""}<h3>${esc(g.name)}</h3>
       <span class="chip lang">${LANGS[g.lang] || g.lang}</span><span class="chip odds">${g.packs} ${g.packs === 1 ? "pakke" : "pakker"}</span>
       <button class="x" id="close" aria-label="Lukk">×</button></div>
     <div class="cols"><div><div class="lbl"><span>Priser i butikkene</span><span>${g.shops} ${g.shops === 1 ? "butikk" : "butikker"}</span></div>${offers}${hunt}</div>
