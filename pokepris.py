@@ -1255,7 +1255,10 @@ def write_html(rows, shops, rates, rate_source, pulls=None, site=False, out=None
     name = "Pokémonpris" if site else "Pokepris"
     logo = "Pokémon<span>pris</span>" if site else "Poke<span>pris</span>"
     meta = ('<meta name="description" content="Sammenlign priser på Pokémon booster-pakker, booster-bokser og Elite '
-            'Trainer Boxes fra butikker som selger til Norge, og se de mest verdifulle kortene i hvert sett.">') if site else ""
+            'Trainer Boxes fra butikker som selger til Norge, og se de mest verdifulle kortene i hvert sett.">'
+            # visitor counter (GoatCounter: no cookies, so no consent banner needed)
+            '\n<script data-goatcounter="https://codmat.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script>'
+            ) if site else ""
     footer = ("""<footer>Pokémonpris er en uavhengig fanside og har ingen tilknytning til Nintendo, The Pokémon Company
 eller noen av butikkene. Prisene hentes automatisk to ganger om dagen og kan være feil eller utdaterte - sjekk alltid prisen
 i butikken før du kjøper. Kortverdier: trendpriser fra Cardmarket via TCGdex. Valutakurser: Norges Bank.
